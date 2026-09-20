@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ReLuminate Echo</title>
+    <meta
+      name="description"
+      content="An audio-first beacon hunt played with binaural sound, a keyboard and no screen."
+    />
+    <style>
+      :root {
+        --blue: #2a5190;
+        --green: #9cc383;
+        --coral: #d95b52;
+        --ink: #f2f5fa;
+        --bg: #0b1220;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--bg);
+        color: var(--ink);
+        font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      main { max-width: 46rem; padding: 2rem; }
+      h1 { font-size: 1.6rem; margin: 0 0 0.25rem; color: var(--green); }
+      .tagline { margin: 0 0 1.5rem; color: #9fb0cc; }
+      #status {
+        border-left: 4px solid var(--blue);
+        padding: 0.75rem 1rem;
+        background: #121c31;
+        border-radius: 0 6px 6px 0;
+        min-height: 3.2rem;
+      }
+      kbd {
+        background: #1b2a47;
+        border: 1px solid #2f4468;
+        border-radius: 4px;
+        padding: 0.05em 0.4em;
+        font: inherit;
+        font-size: 0.9em;
+      }
+      ul { padding-left: 1.2rem; }
+      li { margin: 0.2rem 0; }
+      .note { color: #7e8ea8; font-size: 0.9rem; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>ReLuminate Echo</h1>
+      <p class="tagline">
+        A beacon hunt you play with your ears. Headphones on, monitor off.
+      </p>
+
+      <p id="status" role="status" aria-live="polite">
+        Put on headphones, then press any key to begin.
+      </p>
+
+      <h2>Controls</h2>
+      <ul>
+        <li><kbd>&larr;</kbd> / <kbd>&rarr;</kbd> — turn left and right</li>
+        <li><kbd>&uarr;</kbd> — walk forward</li>
+      </ul>
+
+      <p class="note">
+        Everything you hear is generated in the browser with the Web Audio API. There are no
+        sound files. Direction comes from binaural rendering, so ordinary stereo headphones
+        are all you need — speakers will not work.
+      </p>
+    </main>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
