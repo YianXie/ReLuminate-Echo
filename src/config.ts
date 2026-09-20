@@ -50,6 +50,11 @@ export const GAME = {
   WARNING_SECONDS: 10,
   /** Rejection-sampling attempts when placing an entity before falling back to a fixed ring. */
   SPAWN_ATTEMPTS: 64,
+  /**
+   * How far a sonar ping reaches, units. Half the arena, so a ping is a local snapshot
+   * rather than a free map of everything. Raise it if playtesters feel lost.
+   */
+  PING_RADIUS: 20,
 } as const
 
 /** Fixed simulation step. Decoupled from the display refresh rate so physics is deterministic. */
@@ -155,6 +160,14 @@ export const AUDIO = {
   PULSE_ONCE_MAX_LENGTH: 0.1,
   /** Gap left after a ping-forced pulse before the normal train resumes, as a multiple of its length. */
   PULSE_ONCE_SPACING: 1.5,
+  /**
+   * How much louder a continuously-humming source gets when a ping reaches it, as a
+   * multiple of its steady gain. Continuous voices cannot pulse from silence without
+   * disappearing afterwards, so they swell instead.
+   */
+  PULSE_ONCE_BOOST: 2.2,
+  /** Fraction of the accent spent swelling, the rest settling back. */
+  PULSE_ONCE_BOOST_ATTACK_RATIO: 0.3,
 
   /** Guard band added after every one-shot cue before its nodes are torn down, seconds. */
   CUE_TAIL: 0.05,

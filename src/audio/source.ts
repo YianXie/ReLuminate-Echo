@@ -186,16 +186,32 @@ export class BinauralSource {
   }
 
   /**
-   * One immediate pulse, outside the normal rate. Used by the sonar ping, which is
+   * One immediate accent, outside the normal rate. Used by the sonar ping, which is
    * exactly "make everything nearby announce itself once".
+   *
+   * A pulsed voice gets an extra pulse. A continuous voice cannot: its envelope would
+   * be left at zero and the hum would never come back, so it swells and settles instead.
    */
   pulseOnce(): void {
-    if (!this.voice) return
+    const voice = this.voice
+    if (!voice) return
     const now = audioContext().currentTime
     const length = Math.min(
-      this.voice.pulse?.length ?? AUDIO.DEFAULT_PULSE_LENGTH,
+      voice.pulse?.length ?? AUDIO.DEFAULT_PULSE_LENGTH,
       AUDIO.PULSE_ONCE_MAX_LENGTH,
     )
+
+    if (!voice.pulsed) {
+      const gain = this.envGain.gain
+      cancelRamps(gain, now)
+      gain.linearRampToValueAtTime(
+        voice.gain * AUDIO.PULSE_ONCE_BOOST,
+        now + length * AUDIO.PULSE_ONCE_BOOST_ATTACK_RATIO,
+      )
+      gain.linearRampToValueAtTime(voice.gain, now + length)
+      return
+    }
+
     this.emitPulse(now, length)
     // Push the scheduled pulse train past this one so the two do not overlap.
     this.nextPulseTime = Math.max(this.nextPulseTime, now + length * AUDIO.PULSE_ONCE_SPACING)
