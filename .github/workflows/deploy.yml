@@ -1,15 +1,15 @@
 name: Deploy to GitHub Pages
 
-# Manual for now, because `actions/configure-pages` fails the whole run if Pages has
-# not been turned on for the repository yet.
+# Pages is enabled with Source: GitHub Actions, so every push to main publishes.
 #
-# To make every push to main deploy automatically: turn Pages on under
-# Settings -> Pages -> Build and deployment -> Source: GitHub Actions, then uncomment
-# the `push` trigger below. Until then, run this workflow by hand from the Actions tab.
+# This has to stay the only thing that publishes. A branch-based Pages build serves the
+# repository root, which means index.html reaching for /src/main.ts — raw TypeScript,
+# which GitHub serves as video/mp2t because of the file extension, and which browsers
+# then refuse to execute as a module. The site looks fine and the game never starts.
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
-  # push:
-  #   branches: [main]
 
 # Only what Pages needs, nothing more.
 permissions:

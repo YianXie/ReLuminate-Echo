@@ -13,8 +13,7 @@ monitor switched off, and it was built that way on purpose: it is a
 blind and low-vision players can actually play rather than games that merely have an
 accessibility menu.
 
-**Play it: [play.reluminate-global.org](https://play.reluminate-global.org)** — not live
-yet; see [Deploying](#deploying).
+**Play it: [play.reluminate-global.org](https://play.reluminate-global.org)**
 
 ---
 
@@ -273,17 +272,14 @@ the `cancelAndHoldAtTime` substitute. Real Firefox and Safari runs are still out
 
 ## Deploying
 
-`.github/workflows/deploy.yml` builds and publishes to GitHub Pages. It is set to manual
-(`workflow_dispatch`) because `actions/configure-pages` fails the run if Pages is off.
+`.github/workflows/deploy.yml` builds and publishes to GitHub Pages on every push to
+`main`. Pages must be set to **Settings → Pages → Source: GitHub Actions**, and the
+custom domain comes from `public/CNAME`, which Vite copies into `dist/`.
 
-To go live:
-
-1. **Settings → Pages → Build and deployment → Source: GitHub Actions.**
-2. Uncomment the `push` trigger at the top of `deploy.yml`, or run the workflow once by
-   hand from the Actions tab.
-3. Point the custom domain at GitHub. `public/CNAME` already carries
-   `play.reluminate-global.org`, so add a DNS `CNAME` record for `play` →
-   `yianxie.github.io.` and tick **Enforce HTTPS** once the certificate is issued.
+**Pages must not be set to "Deploy from a branch".** A branch build serves the repository
+root, so `index.html` asks for `/src/main.ts` — raw TypeScript, which GitHub serves as
+`video/mp2t` because of the extension, and which browsers refuse to execute as a module.
+The page renders, the game never starts, and nothing in the build logs says so.
 
 `vite.config.ts` sets `base: '/'`, which is correct for a custom domain. If you ever
 serve it from `yianxie.github.io/ReLuminate-Echo/` instead, change that to
