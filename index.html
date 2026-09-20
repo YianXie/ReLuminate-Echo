@@ -10,13 +10,39 @@
     />
     <style>
       :root {
+        /* ReLuminate brand palette */
         --blue: #2a5190;
         --green: #9cc383;
         --coral: #d95b52;
-        --ink: #f2f5fa;
+
         --bg: #0b1220;
+        --panel: #121c31;
+        --ink: #f2f5fa;
+        --muted: #9fb0cc;
+        --line: #2f4468;
+        --focus: var(--green);
       }
-      * { box-sizing: border-box; }
+
+      /*
+       * (spec) High contrast mode, toggled with C, for players with some usable vision.
+       * Pure black and white at maximum separation, brand hues kept only where they
+       * still clear a 7:1 contrast ratio against the background.
+       */
+      :root[data-contrast='high'] {
+        --bg: #000000;
+        --panel: #000000;
+        --ink: #ffffff;
+        --muted: #ffffff;
+        --line: #ffffff;
+        --green: #b6ef97;
+        --coral: #ff8a80;
+        --blue: #8ab4ff;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
       body {
         margin: 0;
         min-height: 100vh;
@@ -25,51 +51,106 @@
         justify-content: center;
         background: var(--bg);
         color: var(--ink);
-        font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+        font: 16px/1.6 system-ui, -apple-system, 'Segoe UI', sans-serif;
       }
-      main { max-width: 46rem; padding: 2rem; }
-      h1 { font-size: 1.6rem; margin: 0 0 0.25rem; color: var(--green); }
-      .tagline { margin: 0 0 1.5rem; color: #9fb0cc; }
+
+      main {
+        max-width: 46rem;
+        padding: 2rem;
+      }
+
+      h1 {
+        font-size: 1.6rem;
+        margin: 0 0 0.25rem;
+        color: var(--green);
+      }
+
+      h2 {
+        font-size: 1.05rem;
+        margin: 1.5rem 0 0.4rem;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      .tagline {
+        margin: 0 0 1.5rem;
+        color: var(--muted);
+      }
+
       #status {
         border-left: 4px solid var(--blue);
         padding: 0.75rem 1rem;
-        background: #121c31;
+        background: var(--panel);
         border-radius: 0 6px 6px 0;
         min-height: 3.2rem;
+        font-size: 1.05rem;
       }
+
+      :root[data-contrast='high'] #status {
+        border: 2px solid var(--ink);
+        border-left-width: 6px;
+      }
+
       kbd {
-        background: #1b2a47;
-        border: 1px solid #2f4468;
+        background: var(--panel);
+        border: 1px solid var(--line);
         border-radius: 4px;
         padding: 0.05em 0.4em;
         font: inherit;
         font-size: 0.9em;
       }
-      ul { padding-left: 1.2rem; }
-      li { margin: 0.2rem 0; }
-      .note { color: #7e8ea8; font-size: 0.9rem; }
+
+      ul {
+        padding-left: 1.2rem;
+        margin: 0;
+      }
+
+      li {
+        margin: 0.2rem 0;
+      }
+
+      .note {
+        color: var(--muted);
+        font-size: 0.9rem;
+        margin-top: 1.5rem;
+      }
     </style>
   </head>
   <body>
     <main>
       <h1>ReLuminate Echo</h1>
-      <p class="tagline">
-        A beacon hunt you play with your ears. Headphones on, monitor off.
-      </p>
+      <p class="tagline">A beacon hunt you play with your ears. Headphones on, monitor off.</p>
 
-      <p id="status" role="status" aria-live="polite">
+      <!--
+        (spec) The secondary channel. The game speaks for itself through the Web Speech
+        API; this live region carries the same words for players running their own
+        screen reader with our speech muted.
+      -->
+      <p id="status" role="status" aria-live="polite" aria-atomic="true">
         Put on headphones, then press any key to begin.
       </p>
 
-      <h2>Controls</h2>
-      <ul>
-        <li><kbd>&larr;</kbd> / <kbd>&rarr;</kbd> — turn left and right</li>
-        <li><kbd>&uarr;</kbd> — walk forward</li>
-        <li><kbd>Space</kbd> — sonar ping (and start the next round)</li>
-        <li><kbd>Enter</kbd> — collect the beacon when you are on it</li>
-        <li><kbd>Esc</kbd> — pause and hear your score</li>
-        <li><kbd>H</kbd> — repeat the controls</li>
-      </ul>
+      <section aria-labelledby="controls-heading">
+        <h2 id="controls-heading">Controls</h2>
+        <ul>
+          <li><kbd>&larr;</kbd> / <kbd>&rarr;</kbd> — turn left and right</li>
+          <li><kbd>&uarr;</kbd> — walk forward</li>
+          <li><kbd>Space</kbd> — sonar ping (also begins and restarts a round)</li>
+          <li><kbd>Enter</kbd> — collect the beacon when you are on it</li>
+          <li><kbd>Esc</kbd> — pause and hear your score</li>
+          <li><kbd>H</kbd> — repeat the controls</li>
+        </ul>
+      </section>
+
+      <section aria-labelledby="settings-heading">
+        <h2 id="settings-heading">Settings</h2>
+        <ul>
+          <li><kbd>S</kbd> — speech on or off</li>
+          <li><kbd>-</kbd> / <kbd>=</kbd> — volume down and up</li>
+          <li><kbd>C</kbd> — high contrast visuals</li>
+        </ul>
+      </section>
 
       <p class="note">
         Everything you hear is generated in the browser with the Web Audio API. There are no

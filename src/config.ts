@@ -257,3 +257,31 @@ export const CUES = {
     release: 0.05,
   },
 } as const
+
+/**
+ * Self-voicing. (spec) The player may have no vision and no screen reader configured, so
+ * the game reads itself aloud rather than relying on assistive technology being present.
+ */
+export const SPEECH = {
+  LANG: 'en-GB',
+  /** 0.1..10. Above ~1.2 the game starts talking over its own cues. */
+  RATE: 1.05,
+  PITCH: 1,
+  VOLUME: 1,
+  /** Silence between consecutive announcements, seconds, so they do not run together. */
+  GAP: 0.15,
+  /**
+   * The queue advances on the utterance's `end` event. Some browsers drop that event
+   * after a cancel or a tab switch, which would wedge the queue forever, so a watchdog
+   * estimates how long the line should take and moves on if the event never arrives.
+   * Deliberately generous: cutting a real announcement short is worse than a late queue.
+   */
+  ESTIMATED_CHARS_PER_SECOND: 13,
+  WATCHDOG_PADDING_SECONDS: 3,
+} as const
+
+/** Player-facing settings. (spec) Exactly three, all keyboard-reachable and spoken. */
+export const SETTINGS = {
+  /** Master volume increment per key press. */
+  VOLUME_STEP: 0.1,
+} as const

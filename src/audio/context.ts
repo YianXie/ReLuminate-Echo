@@ -39,6 +39,13 @@ let master: GainNode | null = null
 let noise: AudioBuffer | null = null
 
 /**
+ * The volume we last asked for, as opposed to the one the gain node is currently ramping
+ * towards it. Reading `master.gain.value` mid-ramp returns an intermediate figure, so
+ * stepping the volume from it would lose a little of each press to the smoothing.
+ */
+let masterVolumeTarget: number = AUDIO.MASTER_VOLUME_DEFAULT
+
+/**
  * Applies a pose to the real listener. Assigned once, at context creation, to whichever
  * of the two implementations the browser supports.
  */
@@ -84,12 +91,14 @@ export function masterGain(): GainNode {
 
 /** 0..1. Applied smoothly so a volume change is never a click. */
 export function setMasterVolume(volume: number): void {
+  masterVolumeTarget = clamp(volume, 0, 1)
   const now = audioContext().currentTime
-  masterGain().gain.setTargetAtTime(clamp(volume, 0, 1), now, AUDIO.PARAM_SMOOTHING)
+  masterGain().gain.setTargetAtTime(masterVolumeTarget, now, AUDIO.PARAM_SMOOTHING)
 }
 
+/** The requested volume, not the instantaneous value of the ramping gain node. */
 export function masterVolume(): number {
-  return masterGain().gain.value
+  return masterVolumeTarget
 }
 
 /** Resolves once the context is running. Must be called from a user-gesture handler. */

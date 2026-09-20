@@ -1,13 +1,18 @@
 /**
- * Bootstrap: resume the AudioContext on a user gesture, then wire input, state and world.
+ * Bootstrap: resume the AudioContext on a user gesture, then wire input, speech, state
+ * and world together.
  *
  * (spec) An AudioContext starts suspended and only a user gesture can resume it. The
  * "press any key to begin" prompt exists to satisfy that rule; it doubles as the moment
- * the player confirms their headphones are on.
+ * the player confirms their headphones are on, which is why onboarding starts there and
+ * not on page load.
  */
 
-import { resumeAudio } from './audio/context'
+import { masterVolume, resumeAudio, setMasterVolume } from './audio/context'
+import { playCalibrationTone } from './audio/cues'
+import { speech } from './audio/speech'
 import { SourcePool } from './audio/source'
+import { SETTINGS } from './config'
 import { GameLoop } from './game/loop'
 import { World } from './game/world'
 import { Round, StateMachine } from './game/state'
@@ -22,7 +27,11 @@ const CONTROLS =
   'Enter collects the beacon when you are on it. Escape pauses and reads your score. ' +
   'H repeats these controls.'
 
-/** Keys we own. Swallowing their defaults stops arrows and space scrolling the page. */
+const SETTINGS_HELP =
+  'S turns speech on and off. Minus and equals change the volume. ' +
+  'C switches high contrast visuals.'
+
+/** Keys the game owns. Swallowing their defaults stops arrows and space scrolling the page. */
 const HANDLED_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', ' ', 'Enter', 'Escape'])
 
 const input: InputState = { turnLeft: false, turnRight: false, forward: false }
@@ -59,11 +68,11 @@ async function onFirstKey(): Promise<void> {
   world = new World(pool, {
     onTargetCollected: () => {
       round?.collect()
-      announce(`Beacon collected. Score ${round?.score ?? 0}.`)
+      announce(`Beacon collected. Score ${round?.score ?? 0}.`, true)
     },
     onHazardHit: () => {
       round?.penalise()
-      announce(`Hazard. Five seconds lost.`)
+      announce('Hazard. Five seconds lost.', true)
     },
   })
 
@@ -74,7 +83,43 @@ async function onFirstKey(): Promise<void> {
 
   loop = new GameLoop(step)
   loop.start()
-  startRound()
+
+  if (!speech.isSupported) {
+    // Nothing can be said about this out loud, so say it in the live region and let the
+    // player's own screen reader pick it up.
+    announce('This browser has no speech synthesis. Sound cues still work.')
+  }
+  void runOnboarding()
+}
+
+/**
+ * (spec) Spoken onboarding, in the order SPEC.md §7 sets out.
+ *
+ * The phase itself is the skip flag: pressing Space starts the round, which leaves the
+ * onboarding phase, and the loop below stops at its next check. That avoids a separate
+ * "skipped" boolean that could disagree with the state machine.
+ */
+async function runOnboarding(): Promise<void> {
+  machine.enter('onboarding')
+
+  const steps: Array<string | (() => Promise<void>)> = [
+    'Welcome to ReLuminate Echo. A beacon hunt you play with your ears.',
+    'Put on headphones now. The game is played entirely by ear, and it will not work on speakers.',
+    'Now a quick headphone check. This tone is in your left ear.',
+    () => playCalibrationTone('left'),
+    'And this tone is in your right ear.',
+    () => playCalibrationTone('right'),
+    'If those arrived the wrong way round, your headphones are reversed. Swap them over.',
+    CONTROLS,
+    SETTINGS_HELP,
+    'Press Space to begin.',
+  ]
+
+  for (const item of steps) {
+    if (!machine.is('onboarding')) return
+    if (typeof item === 'string') await announce(item)
+    else await item()
+  }
 }
 
 function startRound(): void {
@@ -83,7 +128,7 @@ function startRound(): void {
   round = new Round(parameters)
   world.start(parameters)
   machine.enter('playing')
-  announce(`Round started. ${parameters.roundSeconds} seconds. Find the beacon.`)
+  announce(`Round started. ${parameters.roundSeconds} seconds. Find the beacon.`, true)
 }
 
 function endRound(): void {
@@ -96,7 +141,7 @@ function endRound(): void {
     durationSeconds: round.elapsed,
   })
   const plural = round.score === 1 ? 'beacon' : 'beacons'
-  announce(`Round over. You found ${round.score} ${plural}. Press Space to play again.`)
+  announce(`Round over. You found ${round.score} ${plural}. Press Space to play again.`, true)
 }
 
 /** One fixed simulation step. */
@@ -106,7 +151,7 @@ function step(dt: number): void {
   world.update(dt, input)
   round.tick(dt)
 
-  if (round.takeWarning()) announce('Ten seconds remaining.')
+  if (round.takeWarning()) announce('Ten seconds remaining.', true)
   if (round.isOver) endRound()
 }
 
@@ -135,7 +180,23 @@ function onKeyDown(event: KeyboardEvent): void {
       break
     case 'h':
     case 'H':
-      announce(CONTROLS)
+      announce(CONTROLS, true)
+      break
+    case 's':
+    case 'S':
+      toggleSpeech()
+      break
+    case '-':
+    case '_':
+      changeVolume(-SETTINGS.VOLUME_STEP)
+      break
+    case '=':
+    case '+':
+      changeVolume(SETTINGS.VOLUME_STEP)
+      break
+    case 'c':
+    case 'C':
+      toggleContrast()
       break
     default:
       break
@@ -159,9 +220,10 @@ function onKeyUp(event: KeyboardEvent): void {
   }
 }
 
-/** (spec) Space is the sonar ping in play, and the restart in the round-over state. */
+/** (spec) Space begins the game, pings during play, and starts the next round after one ends. */
 function onSpace(): void {
-  if (machine.is('roundOver')) {
+  if (machine.is('onboarding', 'roundOver')) {
+    speech.cancel()
     startRound()
     return
   }
@@ -180,13 +242,13 @@ function pause(): void {
   releaseAllKeys()
   world.silence()
   const seconds = Math.ceil(round.timeRemaining)
-  announce(`Paused. Score ${round.score}. ${seconds} seconds left. Escape to resume.`)
+  announce(`Paused. Score ${round.score}. ${seconds} seconds left. Escape to resume.`, true)
 }
 
 function unpause(): void {
   if (!world || !machine.enter('playing')) return
   world.resume()
-  announce('Resumed.')
+  announce('Resumed.', true)
 }
 
 /**
@@ -212,6 +274,38 @@ function onVisibilityChange(): void {
   }
 }
 
+/**
+ * (spec) Setting one of three: speech on/off, for players whose screen reader would
+ * otherwise read every announcement a second time.
+ *
+ * Turning speech off says so first and mutes afterwards, otherwise the confirmation
+ * would be the one announcement the player never hears.
+ */
+function toggleSpeech(): void {
+  if (speech.isEnabled) {
+    void announce('Speech off.', true).then(() => speech.setEnabled(false))
+  } else {
+    speech.setEnabled(true)
+    announce('Speech on.', true)
+  }
+}
+
+/** (spec) Setting two of three: master volume. Affects game audio, not the speech voice. */
+function changeVolume(delta: number): void {
+  const next = Math.round(Math.min(1, Math.max(0, masterVolume() + delta)) * 100) / 100
+  setMasterVolume(next)
+  announce(`Volume ${Math.round(next * 100)} percent.`, true)
+}
+
+/** (spec) Setting three of three: high contrast visuals, for players with some sight. */
+function toggleContrast(): void {
+  const root = document.documentElement
+  const high = root.dataset['contrast'] !== 'high'
+  if (high) root.dataset['contrast'] = 'high'
+  else delete root.dataset['contrast']
+  announce(`High contrast ${high ? 'on' : 'off'}.`, true)
+}
+
 /** A key held while the window loses focus never reports keyup, so clear the lot. */
 function releaseAllKeys(): void {
   input.turnLeft = false
@@ -220,11 +314,15 @@ function releaseAllKeys(): void {
 }
 
 /**
- * The single announcement channel. In M3 this also routes to speech synthesis; for now
- * it writes to the ARIA live region, which is the secondary channel SPEC.md §7 asks for.
+ * The single announcement channel.
+ *
+ * (spec) Everything is said aloud and written to the ARIA live region, so a player using
+ * their own screen reader with our speech muted gets the same information. Resolves once
+ * the line has been spoken, which is what lets onboarding sequence itself.
  */
-function announce(message: string): void {
+function announce(message: string, priority = false): Promise<void> {
   status.textContent = message
+  return speech.speak(message, { priority })
 }
 
 function requireElement(id: string): HTMLElement {
