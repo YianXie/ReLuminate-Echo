@@ -49,6 +49,11 @@ let round: Round | null = null
 let loop: GameLoop | null = null
 /** True when the current pause was forced by the page being hidden, not by the player. */
 let pausedByVisibility = false
+/**
+ * What the player has asked for, which is not always what the announcer is doing yet:
+ * turning speech off is deferred until the confirmation has finished being spoken.
+ */
+let speechWanted = true
 
 waitForFirstKey()
 
@@ -302,12 +307,20 @@ function onVisibilityChange(): void {
  * would be the one announcement the player never hears.
  */
 function toggleSpeech(): void {
-  if (speech.isEnabled) {
-    void announce('Speech off.', true).then(() => speech.setEnabled(false))
-  } else {
+  speechWanted = !speechWanted
+
+  if (speechWanted) {
     speech.setEnabled(true)
     announce('Speech on.', true)
+    return
   }
+
+  void announce('Speech off.', true).then(() => {
+    // The player may have changed their mind while that sentence was being spoken.
+    // Tracking the intent separately is what makes a second press during the
+    // confirmation mean "actually, leave it on" instead of "turn it off again".
+    if (!speechWanted) speech.setEnabled(false)
+  })
 }
 
 /** (spec) Setting two of three: master volume. Affects game audio, not the speech voice. */
