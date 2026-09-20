@@ -9,10 +9,12 @@
  */
 
 import { masterVolume, resumeAudio, setMasterVolume } from './audio/context'
+import { GAME, SETTINGS } from './config'
+import { Radar } from './ui/radar'
+import { TelemetryRecorder, downloadSessions } from './telemetry'
 import { playCalibrationTone } from './audio/cues'
 import { speech } from './audio/speech'
 import { SourcePool } from './audio/source'
-import { SETTINGS } from './config'
 import { GameLoop } from './game/loop'
 import { World } from './game/world'
 import { Round, StateMachine } from './game/state'
@@ -29,7 +31,7 @@ const CONTROLS =
 
 const SETTINGS_HELP =
   'S turns speech on and off. Minus and equals change the volume. ' +
-  'C switches high contrast visuals.'
+  'C switches high contrast visuals. D downloads your session data.'
 
 /** Keys the game owns. Swallowing their defaults stops arrows and space scrolling the page. */
 const HANDLED_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', ' ', 'Enter', 'Escape'])
@@ -38,6 +40,8 @@ const input: InputState = { turnLeft: false, turnRight: false, forward: false }
 
 const machine = new StateMachine()
 const difficulty = createDifficulty()
+const telemetry = new TelemetryRecorder()
+const radar = new Radar(requireElement('radar') as HTMLCanvasElement)
 
 let pool: SourcePool | null = null
 let world: World | null = null
@@ -68,10 +72,12 @@ async function onFirstKey(): Promise<void> {
   world = new World(pool, {
     onTargetCollected: () => {
       round?.collect()
+      telemetry.recordCollect()
       announce(`Beacon collected. Score ${round?.score ?? 0}.`, true)
     },
     onHazardHit: () => {
       round?.penalise()
+      telemetry.recordHazardHit()
       announce('Hazard. Five seconds lost.', true)
     },
   })
@@ -81,7 +87,7 @@ async function onFirstKey(): Promise<void> {
   window.addEventListener('blur', releaseAllKeys)
   document.addEventListener('visibilitychange', onVisibilityChange)
 
-  loop = new GameLoop(step)
+  loop = new GameLoop(step, renderRadar)
   loop.start()
 
   if (!speech.isSupported) {
@@ -126,6 +132,7 @@ function startRound(): void {
   if (!world) return
   const parameters = difficulty.next()
   round = new Round(parameters)
+  telemetry.beginRound(parameters)
   world.start(parameters)
   machine.enter('playing')
   announce(`Round started. ${parameters.roundSeconds} seconds. Find the beacon.`, true)
@@ -140,6 +147,7 @@ function endRound(): void {
     hazardHits: round.hazardHits,
     durationSeconds: round.elapsed,
   })
+  telemetry.endRound(round.score)
   const plural = round.score === 1 ? 'beacon' : 'beacons'
   announce(`Round over. You found ${round.score} ${plural}. Press Space to play again.`, true)
 }
@@ -150,6 +158,11 @@ function step(dt: number): void {
 
   world.update(dt, input)
   round.tick(dt)
+  telemetry.sample(dt, {
+    distanceToTarget: world.distanceToTarget,
+    bearingToTarget: world.bearingToTarget,
+    isWalking: world.player.isWalking,
+  })
 
   if (round.takeWarning()) announce('Ten seconds remaining.', true)
   if (round.isOver) endRound()
@@ -198,6 +211,10 @@ function onKeyDown(event: KeyboardEvent): void {
     case 'C':
       toggleContrast()
       break
+    case 'd':
+    case 'D':
+      exportTelemetry()
+      break
     default:
       break
   }
@@ -228,7 +245,10 @@ function onSpace(): void {
     return
   }
   if (!machine.is('playing') || !round || !world) return
-  if (round.usePing()) world.ping()
+  if (round.usePing()) {
+    telemetry.recordPing()
+    world.ping()
+  }
 }
 
 /** (spec) Escape pauses and speaks the current score. */
@@ -303,7 +323,34 @@ function toggleContrast(): void {
   const high = root.dataset['contrast'] !== 'high'
   if (high) root.dataset['contrast'] = 'high'
   else delete root.dataset['contrast']
+  radar.setHighContrast(high)
   announce(`High contrast ${high ? 'on' : 'off'}.`, true)
+}
+
+/** (spec) D downloads everything recorded in this browser as JSON. Nothing is uploaded. */
+function exportTelemetry(): void {
+  const rounds = downloadSessions()
+  const plural = rounds === 1 ? 'round' : 'rounds'
+  announce(`Downloaded ${rounds} ${plural} of session data.`, true)
+}
+
+/**
+ * (spec) The radar is drawn for sighted viewers of the demo recording, so it renders on
+ * every animation frame rather than every simulation step. It reads the world and
+ * changes nothing; hiding it would not alter the game in any way.
+ */
+function renderRadar(): void {
+  if (!world || !machine.is('playing', 'paused')) {
+    radar.render(null)
+    return
+  }
+  radar.render({
+    player: { x: world.player.x, y: world.player.y, heading: world.player.heading },
+    target: { x: world.target.x, y: world.target.y },
+    hazards: world.hazards,
+    arenaSize: GAME.ARENA_SIZE,
+    inRange: world.isTargetInRange,
+  })
 }
 
 /** A key held while the window loses focus never reports keyup, so clear the lot. */

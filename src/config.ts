@@ -174,6 +174,18 @@ export const AUDIO = {
 
   /** Length of the cached white-noise buffer, seconds. Long enough that the loop is not tonal. */
   NOISE_BUFFER_SECONDS: 2,
+
+  /**
+   * Target of every exponential fade-out. `exponentialRampToValueAtTime` cannot reach
+   * zero, so fades land here instead: -80 dB, which is silence for any practical purpose.
+   */
+  SILENCE_FLOOR: 0.0001,
+  /**
+   * Frequency a pooled oscillator idles at before it has ever been assigned a voice.
+   * Never heard — the envelope holds the source at zero until it is acquired — but an
+   * oscillator has to be given something.
+   */
+  IDLE_OSC_FREQUENCY: 440,
 } as const
 
 /**
@@ -284,4 +296,65 @@ export const SPEECH = {
 export const SETTINGS = {
   /** Master volume increment per key press. */
   VOLUME_STEP: 0.1,
+} as const
+
+/**
+ * Telemetry. (spec) Everything stays in the browser: no analytics service, no network
+ * calls, nothing leaves the machine.
+ */
+export const TELEMETRY = {
+  STORAGE_KEY: 'reluminate-echo.sessions',
+  /** Oldest rounds are dropped past this, so a long demo session cannot fill localStorage. */
+  MAX_ROUNDS_STORED: 200,
+  /**
+   * How close the player must get before an approach counts as one worth measuring
+   * overshoot on, as a multiple of the collect radius. Without this, wandering around
+   * the far side of the arena would be logged as a wild overshoot.
+   */
+  OVERSHOOT_ARMING_RADIUS: 3,
+} as const
+
+/**
+ * The radar view. (spec) This is for sighted viewers watching the recording, not a
+ * gameplay aid — the game has to be fully winnable with it hidden.
+ */
+export const RADAR = {
+  /** Logical drawing size, px. The canvas is scaled up for high-density displays. */
+  SIZE: 320,
+  /** Padding between the canvas edge and the arena wall, px. */
+  PADDING: 12,
+
+  /** (spec) ReLuminate brand palette from SPEC.md §0. */
+  COLOUR: {
+    blue: '#2a5190',
+    green: '#9cc383',
+    coral: '#d95b52',
+    grid: '#1b2a47',
+    background: '#0b1220',
+  },
+  /** High-contrast substitutes, for players with some usable vision. */
+  COLOUR_HIGH_CONTRAST: {
+    blue: '#8ab4ff',
+    green: '#b6ef97',
+    coral: '#ff8a80',
+    grid: '#ffffff',
+    background: '#000000',
+  },
+
+  PLAYER_RADIUS: 5,
+  TARGET_RADIUS: 6,
+  HAZARD_RADIUS: 6,
+  /** Half-angle of the heading cone, degrees. Matches nothing in the rules; it is a pointer. */
+  CONE_HALF_ANGLE: 18,
+  CONE_LENGTH: 34,
+  /** Radar sweep rate, degrees/sec. Disabled entirely under prefers-reduced-motion. */
+  SWEEP_SPEED: 90,
+  LINE_WIDTH: 2,
+
+  /** Gap between the beacon dot and its "in range" ring, px. */
+  IN_RANGE_RING_GAP: 5,
+  /** Opacities. The grid and sweep sit behind the entities and must not compete with them. */
+  GRID_ALPHA: 0.5,
+  SWEEP_ALPHA: 0.35,
+  CONE_ALPHA: 0.45,
 } as const

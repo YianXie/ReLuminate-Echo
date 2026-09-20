@@ -117,7 +117,7 @@ export class BinauralSource {
 
     this.osc = ctx.createOscillator()
     this.osc.type = 'sine'
-    this.osc.frequency.value = 440
+    this.osc.frequency.value = AUDIO.IDLE_OSC_FREQUENCY
     this.osc.connect(this.oscGain)
     this.osc.start()
 

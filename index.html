@@ -115,6 +115,17 @@
         font-size: 0.9rem;
         margin-top: 1.5rem;
       }
+
+      #radar {
+        display: block;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--bg);
+      }
+
+      .radar-note {
+        margin-top: 0.5rem;
+      }
     </style>
   </head>
   <body>
@@ -149,7 +160,22 @@
           <li><kbd>S</kbd> — speech on or off</li>
           <li><kbd>-</kbd> / <kbd>=</kbd> — volume down and up</li>
           <li><kbd>C</kbd> — high contrast visuals</li>
+          <li><kbd>D</kbd> — download this session's data as JSON</li>
         </ul>
+      </section>
+
+      <!--
+        The radar exists for sighted viewers of the demo recording. Everything it shows
+        is also audible, so it is hidden from assistive technology rather than described:
+        a screen reader announcing a canvas here would only add noise to a channel the
+        player is using to hear the game.
+      -->
+      <section aria-labelledby="radar-heading">
+        <h2 id="radar-heading">Arena</h2>
+        <canvas id="radar" aria-hidden="true"></canvas>
+        <p class="note radar-note">
+          For viewers, not for players. The game is fully winnable with the monitor off.
+        </p>
       </section>
 
       <p class="note">

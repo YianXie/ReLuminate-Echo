@@ -16,12 +16,6 @@
 import { AUDIO, CUES } from '../config'
 import { audioContext, masterGain, noiseBuffer } from './context'
 
-/**
- * Target of an exponential decay. `exponentialRampToValueAtTime` cannot reach zero, so
- * every fade-out lands here instead: -80 dB, which is silence for any practical purpose.
- */
-const SILENT = 0.0001
-
 /** Last centre-lock tick, on the AudioContext clock. Drives the rate limit. */
 let lastCentreTick = -Infinity
 
@@ -48,7 +42,7 @@ export function playPing(): void {
   const env = ctx.createGain()
   env.gain.setValueAtTime(0, now)
   env.gain.linearRampToValueAtTime(gain, now + attack)
-  env.gain.exponentialRampToValueAtTime(SILENT, now + duration)
+  env.gain.exponentialRampToValueAtTime(AUDIO.SILENCE_FLOOR, now + duration)
 
   source.connect(band).connect(env).connect(masterGain())
   source.start(now)
@@ -85,7 +79,7 @@ export function playCollision(): void {
   const env = ctx.createGain()
   env.gain.setValueAtTime(0, now)
   env.gain.linearRampToValueAtTime(gain, now + attack)
-  env.gain.exponentialRampToValueAtTime(SILENT, now + duration)
+  env.gain.exponentialRampToValueAtTime(AUDIO.SILENCE_FLOOR, now + duration)
 
   osc.connect(lowpass).connect(env).connect(masterGain())
   osc.start(now)
@@ -201,7 +195,7 @@ function playToneSequence({ tones, duration, gain, attack, overlap }: ToneSequen
     const env = ctx.createGain()
     env.gain.setValueAtTime(0, at)
     env.gain.linearRampToValueAtTime(gain, at + attack)
-    env.gain.exponentialRampToValueAtTime(SILENT, at + noteLength)
+    env.gain.exponentialRampToValueAtTime(AUDIO.SILENCE_FLOOR, at + noteLength)
 
     osc.connect(env).connect(masterGain())
     osc.start(at)
