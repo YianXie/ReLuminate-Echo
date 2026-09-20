@@ -197,8 +197,29 @@ export const CUES = {
   TARGET: {
     frequency: 660,
     timbre: 'sine' as const,
-    /** Source gain before distance attenuation. The panner makes far sources very quiet. */
-    gain: 1.0,
+    /**
+     * Source gain before distance attenuation.
+     *
+     * Capped by clipping, not by taste. The distance model holds the gain at 1.0 inside
+     * refDistance and a generic HRTF adds roughly 1.5x on the near ear when a source is
+     * off to one side, so anything above about 0.6 drives the output past full scale
+     * when the player walks onto the beacon with the volume up. Measured, not guessed.
+     */
+    gain: 0.6,
+    /**
+     * Gentler than the shared AUDIO.PANNER.rolloffFactor of 1.4, which is what makes the
+     * beacon audible from across the arena.
+     *
+     * Trades distance contrast for reach: at 1.4 the beacon spans 36 dB between
+     * point-blank and the far wall, which sounds realistic and leaves it nearly inaudible
+     * at 28 units. At 0.4 it is 4 to 6 dB louder everywhere you actually hunt, at the
+     * cost of about 2 dB of the loudness-as-distance cue. Pulse rate carries proximity
+     * anyway, which is what makes that trade affordable.
+     *
+     * Raise it back towards 1.4 if playtesters start walking straight past the beacon;
+     * lower it further if they cannot find it at all.
+     */
+    rolloffFactor: 0.4,
     /** (spec) Pulse rate, pulses/sec, at PULSE_FAR_DISTANCE and at PULSE_NEAR_DISTANCE. */
     PULSE_RATE_FAR: 2,
     PULSE_RATE_NEAR: 8,

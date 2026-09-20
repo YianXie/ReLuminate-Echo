@@ -65,6 +65,16 @@ export interface SourceVoice {
    * a full-spectrum hiss. Distance and rear shadowing still apply on top.
    */
   maxCutoffHz?: number
+  /**
+   * Overrides how fast this voice loses level with distance. Defaults to
+   * AUDIO.PANNER.rolloffFactor.
+   *
+   * A gentler rolloff is not a volume control: the level at point-blank range is fixed
+   * by the distance model at 1.0 whatever this is set to, so lowering it lifts the far
+   * field and leaves the near field alone. That is the only way to make a source easier
+   * to hear across a room when the near field is already at full scale.
+   */
+  rolloffFactor?: number
 }
 
 export class BinauralSource {
@@ -144,6 +154,10 @@ export class BinauralSource {
     const ctx = audioContext()
     const now = ctx.currentTime
     this.voice = voice
+
+    // Set every time, not just when overridden: sources are pooled, so a panner that
+    // voiced the beacon last round must not carry its rolloff into a hazard this round.
+    this.panner.rolloffFactor = voice.rolloffFactor ?? AUDIO.PANNER.rolloffFactor
 
     const wantsNoise = voice.timbre === 'noise'
     if (voice.timbre !== 'noise') {

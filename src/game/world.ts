@@ -264,6 +264,7 @@ function targetVoice(): SourceVoice {
     timbre: CUES.TARGET.timbre,
     frequency: CUES.TARGET.frequency,
     gain: CUES.TARGET.gain,
+    rolloffFactor: CUES.TARGET.rolloffFactor,
     pulsed: true,
     pulse: {
       rateFar: CUES.TARGET.PULSE_RATE_FAR,

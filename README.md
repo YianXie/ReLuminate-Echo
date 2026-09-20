@@ -109,7 +109,7 @@ and the redundancy is the point:
 | Cue | Tells you | How |
 |---|---|---|
 | Binaural rendering | Which way it is | `PannerNode` in `HRTF` mode |
-| Loudness and brightness | How far it is | Inverse-square rolloff plus a lowpass that closes with distance |
+| Loudness and brightness | How far it is | Distance rolloff plus a lowpass that closes with distance |
 | Pulse rate | How close you are | 2 per second far, 8 per second near |
 | Timbre | What it is | Beacon = sine, hazard = sawtooth, wall = filtered noise |
 | Rear shadowing | That it is behind you | Extra lowpass as a source moves off-axis |
@@ -124,6 +124,17 @@ sawtooth hazard and 14 dB on the noise wall — and 0 dB on the beacon, because 
 sine has no energy above 2.5 kHz for the filter to remove. Front/back on the beacon is
 carried by the centre-lock tick and the pulse rate instead. The cue stack is redundant
 precisely so that one cue being inapplicable is not fatal.
+
+**Source gain is capped by clipping, not by taste.** The distance model holds gain at 1.0
+inside `refDistance`, and a generic HRTF adds roughly 1.5× on the near ear when a source
+is off to one side. Measured at the master bus, a beacon at gain 1.0 peaked at 1.49 with
+the volume up — well past the destination's ±1 clamp, and still over it at the default
+volume. So the beacon runs at 0.6 and gets its reach from a gentler `rolloffFactor`
+instead: lowering rolloff lifts the far field and leaves the near field untouched, which
+is the only way to make something easier to hear across a room when the near end is
+already at full scale. That is worth 4–6 dB everywhere the hunting actually happens, for
+about 2 dB of the loudness-as-distance cue — affordable because pulse rate carries
+proximity anyway.
 
 **Nothing is scheduled against wall-clock time.** Every envelope, sweep and pulse is
 scheduled against `AudioContext.currentTime`. The audio thread runs on its own clock and
@@ -165,7 +176,8 @@ const pool = new SourcePool()          // eight pooled HRTF voices
 const beacon = pool.acquire({
   timbre: 'sine',
   frequency: 660,
-  gain: 1,
+  gain: 0.6,
+  rolloffFactor: 0.4,                   // gentler than the shared default; see below
   pulsed: true,                         // pulse rate rises as the listener closes in
   pulse: { rateFar: 2, rateNear: 8, distanceFar: 28, distanceNear: 1.5, length: 0.12 },
 })

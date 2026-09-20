@@ -47,7 +47,7 @@
         margin: 0;
         min-height: 100vh;
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         justify-content: center;
         background: var(--bg);
         color: var(--ink);
@@ -56,7 +56,7 @@
 
       main {
         max-width: 46rem;
-        padding: 2rem;
+        padding: 2rem 2rem 4rem;
       }
 
       h1 {
@@ -90,6 +90,17 @@
       :root[data-contrast='high'] #status {
         border: 2px solid var(--ink);
         border-left-width: 6px;
+      }
+
+      /* The muted/green distinction disappears at maximum contrast, so lean on weight. */
+      :root[data-contrast='high'] th,
+      :root[data-contrast='high'] td {
+        border-bottom-color: var(--ink);
+      }
+
+      :root[data-contrast='high'] tbody th {
+        color: var(--ink);
+        text-decoration: underline;
       }
 
       kbd {
@@ -126,6 +137,40 @@
       .radar-note {
         margin-top: 0.5rem;
       }
+
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 0;
+      }
+
+      th,
+      td {
+        text-align: left;
+        padding: 0.45rem 0.7rem 0.45rem 0;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }
+
+      th {
+        color: var(--muted);
+        font-weight: 600;
+        white-space: nowrap;
+      }
+
+      tbody th {
+        color: var(--green);
+        font-weight: 600;
+      }
+
+      ol {
+        padding-left: 1.2rem;
+        margin: 0;
+      }
+
+      ol li {
+        margin: 0.35rem 0;
+      }
     </style>
   </head>
   <body>
@@ -141,6 +186,42 @@
       <p id="status" role="status" aria-live="polite" aria-atomic="true">
         Put on headphones, then press any key to begin.
       </p>
+
+      <!--
+        The radar exists for sighted viewers of the demo recording. Everything it shows
+        is also audible, so it is hidden from assistive technology rather than described:
+        a screen reader announcing a canvas here would only add noise to a channel the
+        player is using to hear the game.
+      -->
+      <section aria-labelledby="radar-heading">
+        <h2 id="radar-heading">Arena</h2>
+        <canvas id="radar" aria-hidden="true"></canvas>
+        <p class="note radar-note">
+          For viewers, not for players. The game is fully winnable with the monitor off.
+        </p>
+      </section>
+
+      <section aria-labelledby="howto-heading">
+        <h2 id="howto-heading">How to play</h2>
+        <ol>
+          <li>Put on headphones. Any stereo pair. Speakers will not work.</li>
+          <li>Press any key. The game introduces itself and checks your headphones.</li>
+          <li>Press <kbd>Space</kbd> to start a round. You get 60 seconds.</li>
+          <li>
+            Turn with <kbd>&larr;</kbd> and <kbd>&rarr;</kbd> until you hear a dry click.
+            That click means the beacon is dead ahead.
+          </li>
+          <li>
+            Hold <kbd>&uarr;</kbd> to walk. The beacon pulses faster as you close on it and
+            slower if you are going the wrong way.
+          </li>
+          <li>
+            When the two rising notes play you are in range. Press <kbd>Enter</kbd> to
+            collect it and a new beacon appears somewhere else.
+          </li>
+          <li>Avoid the low hums. Walking into one costs you five seconds.</li>
+        </ol>
+      </section>
 
       <section aria-labelledby="controls-heading">
         <h2 id="controls-heading">Controls</h2>
@@ -164,18 +245,78 @@
         </ul>
       </section>
 
-      <!--
-        The radar exists for sighted viewers of the demo recording. Everything it shows
-        is also audible, so it is hidden from assistive technology rather than described:
-        a screen reader announcing a canvas here would only add noise to a channel the
-        player is using to hear the game.
-      -->
-      <section aria-labelledby="radar-heading">
-        <h2 id="radar-heading">Arena</h2>
-        <canvas id="radar" aria-hidden="true"></canvas>
-        <p class="note radar-note">
-          For viewers, not for players. The game is fully winnable with the monitor off.
-        </p>
+
+      <section aria-labelledby="sounds-heading">
+        <h2 id="sounds-heading">What you are hearing</h2>
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Sound</th>
+              <th scope="col">What it means</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">Pulsing clear tone</th>
+              <td>
+                The beacon. Its direction is where it sounds like it is; the pulse rate
+                rises from twice a second across the arena to eight times a second on top
+                of it.
+              </td>
+            </tr>
+            <tr>
+              <th scope="row">Short dry click</th>
+              <td>You are aimed within five degrees of the beacon. Walk forward.</td>
+            </tr>
+            <tr>
+              <th scope="row">Two rising notes</th>
+              <td>Close enough to collect. Press <kbd>Enter</kbd>.</td>
+            </tr>
+            <tr>
+              <th scope="row">Three rising notes</th>
+              <td>Collected. Your score went up and a new beacon has appeared.</td>
+            </tr>
+            <tr>
+              <th scope="row">Low buzzing hum</th>
+              <td>A hazard. Steer around it.</td>
+            </tr>
+            <tr>
+              <th scope="row">Low thud</th>
+              <td>You hit a hazard. Five seconds gone.</td>
+            </tr>
+            <tr>
+              <th scope="row">Soft hiss</th>
+              <td>A wall. You are running out of arena.</td>
+            </tr>
+            <tr>
+              <th scope="row">Rising whoosh</th>
+              <td>Your sonar ping. Everything nearby answers once.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section aria-labelledby="tips-heading">
+        <h2 id="tips-heading">If you are struggling</h2>
+        <ul>
+          <li>
+            <strong>Sweep, do not stare.</strong> Turning is the skill. Headphone audio is
+            far better at left versus right than at front versus back, so keep rotating
+            rather than standing still trying to judge.
+          </li>
+          <li>
+            <strong>Trust the click over the tone.</strong> It is a yes-or-no signal, so
+            you never have to judge a small angle by ear.
+          </li>
+          <li>
+            <strong>If the pulses slow down, turn around.</strong> You are walking away
+            from it.
+          </li>
+          <li>
+            <strong>Lost?</strong> Press <kbd>Space</kbd> for a ping, or <kbd>H</kbd> to
+            hear the controls again.
+          </li>
+        </ul>
       </section>
 
       <p class="note">
