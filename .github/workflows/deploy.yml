@@ -1,9 +1,15 @@
 name: Deploy to GitHub Pages
 
+# Manual for now, because `actions/configure-pages` fails the whole run if Pages has
+# not been turned on for the repository yet.
+#
+# To make every push to main deploy automatically: turn Pages on under
+# Settings -> Pages -> Build and deployment -> Source: GitHub Actions, then uncomment
+# the `push` trigger below. Until then, run this workflow by hand from the Actions tab.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
+  # push:
+  #   branches: [main]
 
 # Only what Pages needs, nothing more.
 permissions:
@@ -23,14 +29,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
-      # Typechecks as well as bundles: `npm run build` is `tsc --noEmit && vite build`.
       - run: npm run build
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
+          # The custom domain comes from public/CNAME, which Vite copies into dist.
           path: dist
 
   deploy:

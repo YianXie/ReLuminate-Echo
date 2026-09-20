@@ -1,5 +1,7 @@
 # ReLuminate Echo
 
+[![CI](https://github.com/YianXie/ReLuminate-Echo/actions/workflows/ci.yml/badge.svg)](https://github.com/YianXie/ReLuminate-Echo/actions/workflows/ci.yml)
+
 An audio-first beacon hunt. You are dropped into a dark 40×40 arena with a beacon
 somewhere in it, three hazards humming away, and sixty seconds. You find the beacon by
 turning until it sounds like it is in front of you, then walking. When you collect it,
@@ -11,7 +13,8 @@ monitor switched off, and it was built that way on purpose: it is a
 blind and low-vision players can actually play rather than games that merely have an
 accessibility menu.
 
-**Play it: [play.reluminate-global.org](https://play.reluminate-global.org)**
+**Play it: [play.reluminate-global.org](https://play.reluminate-global.org)** — not live
+yet; see [Deploying](#deploying).
 
 ---
 
@@ -255,6 +258,24 @@ be tuning against noise.
 Targets current Chrome, Firefox and Safari on desktop. Verified in Chrome, including
 the fallback paths that older Safari and Firefox need: the deprecated listener API and
 the `cancelAndHoldAtTime` substitute. Real Firefox and Safari runs are still outstanding.
+
+## Deploying
+
+`.github/workflows/deploy.yml` builds and publishes to GitHub Pages. It is set to manual
+(`workflow_dispatch`) because `actions/configure-pages` fails the run if Pages is off.
+
+To go live:
+
+1. **Settings → Pages → Build and deployment → Source: GitHub Actions.**
+2. Uncomment the `push` trigger at the top of `deploy.yml`, or run the workflow once by
+   hand from the Actions tab.
+3. Point the custom domain at GitHub. `public/CNAME` already carries
+   `play.reluminate-global.org`, so add a DNS `CNAME` record for `play` →
+   `yianxie.github.io.` and tick **Enforce HTTPS** once the certificate is issued.
+
+`vite.config.ts` sets `base: '/'`, which is correct for a custom domain. If you ever
+serve it from `yianxie.github.io/ReLuminate-Echo/` instead, change that to
+`/ReLuminate-Echo/` or every asset will 404.
 
 ## Licence
 
