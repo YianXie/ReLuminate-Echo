@@ -5,10 +5,20 @@ import { CentreLock, centreTolerance, type CentreTick } from "../src/game/aim";
 const DT = LOOP.FIXED_DT;
 const RADIUS = 1.5;
 
+/**
+ * Where the collect radius starts to cover more than the fixed tolerance. Derived, not
+ * written down, so that retuning GAME.CENTRE_TOLERANCE by ear cannot break these tests.
+ */
+const CROSSOVER = RADIUS / Math.tan((GAME.CENTRE_TOLERANCE * Math.PI) / 180);
+
 describe("centreTolerance", () => {
-    it("is the fixed tolerance across most of the arena", () => {
-        expect(centreTolerance(RADIUS, 28)).toBe(GAME.CENTRE_TOLERANCE);
-        expect(centreTolerance(RADIUS, 18)).toBe(GAME.CENTRE_TOLERANCE);
+    it("is the fixed tolerance from the crossover distance outwards", () => {
+        expect(centreTolerance(RADIUS, CROSSOVER * 1.5)).toBe(
+            GAME.CENTRE_TOLERANCE
+        );
+        expect(centreTolerance(RADIUS, CROSSOVER * 1.05)).toBe(
+            GAME.CENTRE_TOLERANCE
+        );
     });
 
     it("widens to the angle the collect radius covers once that is larger", () => {
@@ -18,19 +28,17 @@ describe("centreTolerance", () => {
     });
 
     it("takes over exactly where the two are equal", () => {
-        const crossover =
-            RADIUS / Math.tan((GAME.CENTRE_TOLERANCE * Math.PI) / 180);
-        expect(centreTolerance(RADIUS, crossover * 1.01)).toBe(
+        expect(centreTolerance(RADIUS, CROSSOVER * 1.01)).toBe(
             GAME.CENTRE_TOLERANCE
         );
-        expect(centreTolerance(RADIUS, crossover * 0.99)).toBeGreaterThan(
+        expect(centreTolerance(RADIUS, CROSSOVER * 0.99)).toBeGreaterThan(
             GAME.CENTRE_TOLERANCE
         );
     });
 
     it("never narrows as the player closes in", () => {
         let previous = 0;
-        for (let distance = 28; distance >= 0; distance -= 0.25) {
+        for (let distance = CROSSOVER * 2; distance >= 0; distance -= 0.25) {
             const tolerance = centreTolerance(RADIUS, distance);
             expect(tolerance).toBeGreaterThanOrEqual(previous);
             previous = tolerance;

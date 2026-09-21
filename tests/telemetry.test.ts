@@ -151,7 +151,7 @@ describe("angular error at walk start", () => {
         expect(record.acquisitions[0]?.angularErrorAtWalkStart).toBeNull();
     });
 
-    it("starts each round with no memory of the last one's walking", () => {
+    it("captures an onset in a later round on the same recorder", () => {
         const recorder = begin();
         feed(recorder, [standing(8, 2), walking(7.95, 2)]);
         recorder.endRound(0);
@@ -162,6 +162,25 @@ describe("angular error at walk start", () => {
 
         const record = recorder.endRound(1);
         expect(record.acquisitions[0]?.angularErrorAtWalkStart).toBe(21);
+    });
+
+    // The game reuses one recorder for the whole page, and the key handlers run in every
+    // phase, so the up arrow can be down when Space restarts. Both ways in are covered:
+    // held from the round that just ended, and pressed while the round-over line played.
+    it.each([
+        ["held from the end of the previous round", walking(7.95, 2)],
+        ["pressed between rounds", standing(8, 2)],
+    ])("does not treat a walk key %s as an onset", (_, lastSample) => {
+        const recorder = begin();
+        feed(recorder, [standing(8, 2), lastSample]);
+        recorder.endRound(0);
+
+        recorder.beginRound(defaultParameters(), "timed");
+        feed(recorder, [walking(9, 118), walking(8.95, 118)]);
+        recorder.recordCollect();
+
+        const record = recorder.endRound(1);
+        expect(record.acquisitions[0]?.angularErrorAtWalkStart).toBeNull();
     });
 });
 
