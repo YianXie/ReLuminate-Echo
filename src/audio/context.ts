@@ -14,6 +14,7 @@
  */
 
 import { AUDIO } from "../config";
+import { clamp } from "./math";
 
 declare global {
     interface Window {
@@ -246,17 +247,4 @@ export function cancelRamps(param: AudioParam, when: number): void {
         param.cancelScheduledValues(when);
         param.setValueAtTime(held, when);
     }
-}
-
-export function clamp(value: number, min: number, max: number): number {
-    return value < min ? min : value > max ? max : value;
-}
-
-/**
- * Interpolates between two frequencies geometrically. Pitch and filter cutoff are
- * perceived logarithmically, so a linear sweep from 18 kHz to 2 kHz spends almost all of
- * its travel in a range the ear treats as identical.
- */
-export function logLerp(from: number, to: number, t: number): number {
-    return from * Math.pow(to / from, clamp(t, 0, 1));
 }

@@ -34,9 +34,8 @@ import {
     listenerPose,
     ramp,
     cancelRamps,
-    clamp,
-    logLerp,
 } from "./context";
+import { clamp, distanceCutoff, pulseRate, rearCutoff } from "./math";
 
 /** Oscillator shapes plus white noise. (spec) target = sine, hazard = sawtooth, wall = noise. */
 export type Timbre = OscillatorType | "noise";
@@ -387,35 +386,6 @@ export class SourcePool {
     releaseAll(): void {
         for (const source of this.sources) source.release();
     }
-}
-
-/** Distance -> lowpass cutoff. Far sources lose their highs, as they would in air. */
-function distanceCutoff(distance: number): number {
-    const t = clamp(distance / AUDIO.PANNER.maxDistance, 0, 1);
-    return logLerp(AUDIO.FILTER_NEAR_HZ, AUDIO.FILTER_FAR_HZ, t);
-}
-
-/**
- * Off-axis angle -> lowpass cutoff. This is the front/back disambiguation cue.
- *
- * `(1 - cos) / 2` maps dead-ahead to 0 and directly-behind to 1, smoothly and with no
- * trigonometry. Raising it to REAR_SHADOW_CURVE keeps the front hemisphere bright and
- * concentrates the shadowing behind the 90-degree line, which is where SPEC.md asks for
- * it and where generic HRTFs actually fail.
- */
-function rearCutoff(cosAngle: number): number {
-    const t = Math.pow((1 - cosAngle) / 2, AUDIO.REAR_SHADOW_CURVE);
-    return logLerp(AUDIO.REAR_FRONT_HZ, AUDIO.REAR_BEHIND_HZ, t);
-}
-
-/** Distance -> pulses per second, linear and clamped at both ends. */
-function pulseRate(
-    distance: number,
-    map: NonNullable<SourceVoice["pulse"]>
-): number {
-    const span = map.distanceFar - map.distanceNear;
-    const t = span <= 0 ? 0 : clamp((distance - map.distanceNear) / span, 0, 1);
-    return map.rateNear + (map.rateFar - map.rateNear) * t;
 }
 
 /**
