@@ -38,11 +38,12 @@ export interface SpeakOptions {
 
 interface QueueItem {
     text: string;
-    resolve: () => void;
+    /** True if the line was started, false if it was dropped before its turn. */
+    resolve: (started: boolean) => void;
     onStart: (() => void) | undefined;
 }
 
-class Announcer {
+export class Announcer {
     private readonly queue: QueueItem[] = [];
     private current: QueueItem | null = null;
     private watchdog: number | null = null;
@@ -57,18 +58,22 @@ class Announcer {
     }
 
     /**
-     * Queues a line. Resolves when it has been spoken, or immediately when speech is off,
-     * so that a caller sequencing onboarding can simply await each step.
+     * Queues a line. Resolves once it has been spoken, or once its reading time has passed
+     * when speech is off, so that a caller sequencing onboarding can simply await each step.
+     *
+     * Resolves true if the line got its turn and false if it was dropped from the queue
+     * first, by a priority line or by `cancel()`. A caller for whom the line was not
+     * optional can use that to say it again.
      */
-    speak(text: string, options: SpeakOptions = {}): Promise<void> {
-        if (!text) return Promise.resolve();
+    speak(text: string, options: SpeakOptions = {}): Promise<boolean> {
+        if (!text) return Promise.resolve(true);
 
         if (options.priority) {
             // Resolve the dropped lines rather than leaving their awaiters hanging forever.
-            for (const item of this.queue.splice(0)) item.resolve();
+            for (const item of this.queue.splice(0)) item.resolve(false);
         }
 
-        return new Promise<void>((resolve) => {
+        return new Promise<boolean>((resolve) => {
             this.queue.push({ text, resolve, onStart: options.onStart });
             this.pump();
         });
@@ -77,20 +82,35 @@ class Announcer {
     /**
      * (spec) The mute toggle. Turning speech off stops the current line immediately —
      * here interrupting is the whole point, because the player has just asked for silence.
+     *
+     * It silences the voice and nothing else. Lines still waiting are kept and carry on
+     * through the muted path in `pump()`, because from this moment the live region is the
+     * player's only channel and those lines have not reached it yet.
      */
     setEnabled(enabled: boolean): void {
         this.enabled = enabled;
-        if (!enabled) this.cancel();
+        if (enabled) return;
+        const interrupted = this.stopCurrent();
+        interrupted?.resolve(true);
+        this.pump();
     }
 
     /** Drops everything, pending and in flight. */
     cancel(): void {
+        for (const item of this.queue.splice(0)) item.resolve(false);
+        // The line in flight had started, which is all `speak()` promises about it.
+        this.stopCurrent()?.resolve(true);
+    }
+
+    /** Cuts off the line in flight, if any, and hands it back for its awaiter to be released. */
+    private stopCurrent(): QueueItem | null {
         this.clearWatchdog();
-        for (const item of this.queue.splice(0)) item.resolve();
-        const finished = this.current;
+        const interrupted = this.current;
         this.current = null;
+        // A late `end` or `error` from the cancelled utterance is harmless: `finish()`
+        // ignores any line that is no longer the current one.
         if (this.isSupported) window.speechSynthesis.cancel();
-        finished?.resolve();
+        return interrupted;
     }
 
     private pump(): void {
@@ -130,7 +150,7 @@ class Announcer {
         if (this.current !== item) return;
         this.clearWatchdog();
         this.current = null;
-        item.resolve();
+        item.resolve(true);
         // (spec) A beat between lines so two announcements never sound like one sentence.
         window.setTimeout(() => this.pump(), SPEECH.GAP * 1000);
     }

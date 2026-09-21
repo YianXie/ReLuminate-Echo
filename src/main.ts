@@ -152,8 +152,15 @@ async function runOnboarding(): Promise<void> {
 
     for (const item of steps) {
         if (!machine.is("onboarding")) return;
-        if (typeof item === "string") await announce(item);
-        else await item();
+        if (typeof item !== "string") {
+            await item();
+            continue;
+        }
+        // A priority line, such as a volume change, drops whatever was waiting behind it,
+        // and that can be this step. None of onboarding is optional, so say it again. Each
+        // retry takes another keypress from the player, so this cannot spin.
+        while (!(await announce(item)))
+            if (!machine.is("onboarding")) return;
     }
 }
 
@@ -426,13 +433,14 @@ function releaseAllKeys(): void {
  *
  * (spec) Everything is said aloud and written to the ARIA live region, so a player using
  * their own screen reader with our speech muted gets the same information. Resolves once
- * the line has been spoken, which is what lets onboarding sequence itself.
+ * the line has been spoken, which is what lets onboarding sequence itself, and resolves
+ * false if the line was dropped from the queue without being said.
  *
  * The live region is written as the line starts being spoken, not as it is queued.
  * Several lines queued together, as H does, would otherwise overwrite each other at once
  * and a screen reader would catch only the last.
  */
-function announce(message: string, priority = false): Promise<void> {
+function announce(message: string, priority = false): Promise<boolean> {
     if (
         import.meta.env.DEV &&
         message.length > SPEECH.MAX_UTTERANCE_CHARS
