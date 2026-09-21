@@ -13,129 +13,136 @@
  * Like the rest of `src/audio/`, this imports nothing from `src/game/`.
  */
 
-import { SPEECH } from '../config'
+import { SPEECH } from "../config";
 
 export interface SpeakOptions {
-  /**
-   * Drops anything still waiting so this line is next.
-   *
-   * It does NOT cut off the line currently being spoken: SPEC.md is explicit that
-   * announcements must not interrupt each other mid-word, and a round-over or
-   * ten-seconds-left cue arriving one short sentence late is a far smaller problem than
-   * a player losing the second half of the sentence they were listening to.
-   */
-  priority?: boolean
+    /**
+     * Drops anything still waiting so this line is next.
+     *
+     * It does NOT cut off the line currently being spoken: SPEC.md is explicit that
+     * announcements must not interrupt each other mid-word, and a round-over or
+     * ten-seconds-left cue arriving one short sentence late is a far smaller problem than
+     * a player losing the second half of the sentence they were listening to.
+     */
+    priority?: boolean;
 }
 
 interface QueueItem {
-  text: string
-  resolve: () => void
+    text: string;
+    resolve: () => void;
 }
 
 class Announcer {
-  private readonly queue: QueueItem[] = []
-  private current: QueueItem | null = null
-  private watchdog: number | null = null
-  private enabled = true
+    private readonly queue: QueueItem[] = [];
+    private current: QueueItem | null = null;
+    private watchdog: number | null = null;
+    private enabled = true;
 
-  /** False when the browser has no speech synthesis at all. */
-  readonly isSupported: boolean =
-    typeof window !== 'undefined' && 'speechSynthesis' in window
+    /** False when the browser has no speech synthesis at all. */
+    readonly isSupported: boolean =
+        typeof window !== "undefined" && "speechSynthesis" in window;
 
-  get isEnabled(): boolean {
-    return this.enabled && this.isSupported
-  }
-
-  /**
-   * Queues a line. Resolves when it has been spoken, or immediately when speech is off,
-   * so that a caller sequencing onboarding can simply await each step.
-   */
-  speak(text: string, options: SpeakOptions = {}): Promise<void> {
-    if (!text) return Promise.resolve()
-
-    if (options.priority) {
-      // Resolve the dropped lines rather than leaving their awaiters hanging forever.
-      for (const item of this.queue.splice(0)) item.resolve()
+    get isEnabled(): boolean {
+        return this.enabled && this.isSupported;
     }
 
-    return new Promise<void>((resolve) => {
-      this.queue.push({ text, resolve })
-      this.pump()
-    })
-  }
+    /**
+     * Queues a line. Resolves when it has been spoken, or immediately when speech is off,
+     * so that a caller sequencing onboarding can simply await each step.
+     */
+    speak(text: string, options: SpeakOptions = {}): Promise<void> {
+        if (!text) return Promise.resolve();
 
-  /**
-   * (spec) The mute toggle. Turning speech off stops the current line immediately —
-   * here interrupting is the whole point, because the player has just asked for silence.
-   */
-  setEnabled(enabled: boolean): void {
-    this.enabled = enabled
-    if (!enabled) this.cancel()
-  }
+        if (options.priority) {
+            // Resolve the dropped lines rather than leaving their awaiters hanging forever.
+            for (const item of this.queue.splice(0)) item.resolve();
+        }
 
-  /** Drops everything, pending and in flight. */
-  cancel(): void {
-    this.clearWatchdog()
-    for (const item of this.queue.splice(0)) item.resolve()
-    const finished = this.current
-    this.current = null
-    if (this.isSupported) window.speechSynthesis.cancel()
-    finished?.resolve()
-  }
-
-  private pump(): void {
-    if (this.current || this.queue.length === 0) return
-    const item = this.queue.shift()
-    if (!item) return
-    this.current = item
-
-    if (!this.isEnabled) {
-      // Muted, or the browser has no speech at all. The queue still runs, at reading
-      // pace, because the ARIA live region is the fallback channel and overwriting it
-      // faster than a screen reader can speak would swallow every line but the last.
-      // This is the exact case the mute toggle exists for, so it has to keep working.
-      this.watchdog = window.setTimeout(() => this.finish(item), this.estimate(item.text) * 1000)
-      return
+        return new Promise<void>((resolve) => {
+            this.queue.push({ text, resolve });
+            this.pump();
+        });
     }
 
-    const utterance = new SpeechSynthesisUtterance(item.text)
-    utterance.lang = SPEECH.LANG
-    utterance.rate = SPEECH.RATE
-    utterance.pitch = SPEECH.PITCH
-    utterance.volume = SPEECH.VOLUME
-    utterance.onend = () => this.finish(item)
-    // An error is still a finished line as far as the queue is concerned; stalling here
-    // would silence every announcement that followed it.
-    utterance.onerror = () => this.finish(item)
+    /**
+     * (spec) The mute toggle. Turning speech off stops the current line immediately —
+     * here interrupting is the whole point, because the player has just asked for silence.
+     */
+    setEnabled(enabled: boolean): void {
+        this.enabled = enabled;
+        if (!enabled) this.cancel();
+    }
 
-    this.armWatchdog(item)
-    window.speechSynthesis.speak(utterance)
-  }
+    /** Drops everything, pending and in flight. */
+    cancel(): void {
+        this.clearWatchdog();
+        for (const item of this.queue.splice(0)) item.resolve();
+        const finished = this.current;
+        this.current = null;
+        if (this.isSupported) window.speechSynthesis.cancel();
+        finished?.resolve();
+    }
 
-  private finish(item: QueueItem): void {
-    if (this.current !== item) return
-    this.clearWatchdog()
-    this.current = null
-    item.resolve()
-    // (spec) A beat between lines so two announcements never sound like one sentence.
-    window.setTimeout(() => this.pump(), SPEECH.GAP * 1000)
-  }
+    private pump(): void {
+        if (this.current || this.queue.length === 0) return;
+        const item = this.queue.shift();
+        if (!item) return;
+        this.current = item;
 
-  private armWatchdog(item: QueueItem): void {
-    const seconds = this.estimate(item.text) + SPEECH.WATCHDOG_PADDING_SECONDS
-    this.watchdog = window.setTimeout(() => this.finish(item), seconds * 1000)
-  }
+        if (!this.isEnabled) {
+            // Muted, or the browser has no speech at all. The queue still runs, at reading
+            // pace, because the ARIA live region is the fallback channel and overwriting it
+            // faster than a screen reader can speak would swallow every line but the last.
+            // This is the exact case the mute toggle exists for, so it has to keep working.
+            this.watchdog = window.setTimeout(
+                () => this.finish(item),
+                this.estimate(item.text) * 1000
+            );
+            return;
+        }
 
-  /** Roughly how long a line takes to say, seconds. */
-  private estimate(text: string): number {
-    return text.length / SPEECH.ESTIMATED_CHARS_PER_SECOND / SPEECH.RATE
-  }
+        const utterance = new SpeechSynthesisUtterance(item.text);
+        utterance.lang = SPEECH.LANG;
+        utterance.rate = SPEECH.RATE;
+        utterance.pitch = SPEECH.PITCH;
+        utterance.volume = SPEECH.VOLUME;
+        utterance.onend = () => this.finish(item);
+        // An error is still a finished line as far as the queue is concerned; stalling here
+        // would silence every announcement that followed it.
+        utterance.onerror = () => this.finish(item);
 
-  private clearWatchdog(): void {
-    if (this.watchdog !== null) window.clearTimeout(this.watchdog)
-    this.watchdog = null
-  }
+        this.armWatchdog(item);
+        window.speechSynthesis.speak(utterance);
+    }
+
+    private finish(item: QueueItem): void {
+        if (this.current !== item) return;
+        this.clearWatchdog();
+        this.current = null;
+        item.resolve();
+        // (spec) A beat between lines so two announcements never sound like one sentence.
+        window.setTimeout(() => this.pump(), SPEECH.GAP * 1000);
+    }
+
+    private armWatchdog(item: QueueItem): void {
+        const seconds =
+            this.estimate(item.text) + SPEECH.WATCHDOG_PADDING_SECONDS;
+        this.watchdog = window.setTimeout(
+            () => this.finish(item),
+            seconds * 1000
+        );
+    }
+
+    /** Roughly how long a line takes to say, seconds. */
+    private estimate(text: string): number {
+        return text.length / SPEECH.ESTIMATED_CHARS_PER_SECOND / SPEECH.RATE;
+    }
+
+    private clearWatchdog(): void {
+        if (this.watchdog !== null) window.clearTimeout(this.watchdog);
+        this.watchdog = null;
+    }
 }
 
 /** One announcer for the whole game. */
-export const speech = new Announcer()
+export const speech = new Announcer();

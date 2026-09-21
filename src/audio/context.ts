@@ -13,43 +13,43 @@
  * drifts from the render loop within seconds.
  */
 
-import { AUDIO } from '../config'
+import { AUDIO } from "../config";
 
 declare global {
-  interface Window {
-    webkitAudioContext?: typeof AudioContext
-  }
+    interface Window {
+        webkitAudioContext?: typeof AudioContext;
+    }
 }
 
 export interface Vec3 {
-  x: number
-  y: number
-  z: number
+    x: number;
+    y: number;
+    z: number;
 }
 
 export interface ListenerPose {
-  /** Listener position in audio-world coordinates (metres/units, y is up). */
-  position: Vec3
-  /** Unit vector the listener faces. */
-  forward: Vec3
+    /** Listener position in audio-world coordinates (metres/units, y is up). */
+    position: Vec3;
+    /** Unit vector the listener faces. */
+    forward: Vec3;
 }
 
-let ctx: AudioContext | null = null
-let master: GainNode | null = null
-let noise: AudioBuffer | null = null
+let ctx: AudioContext | null = null;
+let master: GainNode | null = null;
+let noise: AudioBuffer | null = null;
 
 /**
  * The volume we last asked for, as opposed to the one the gain node is currently ramping
  * towards it. Reading `master.gain.value` mid-ramp returns an intermediate figure, so
  * stepping the volume from it would lose a little of each press to the smoothing.
  */
-let masterVolumeTarget: number = AUDIO.MASTER_VOLUME_DEFAULT
+let masterVolumeTarget: number = AUDIO.MASTER_VOLUME_DEFAULT;
 
 /**
  * Applies a pose to the real listener. Assigned once, at context creation, to whichever
  * of the two implementations the browser supports.
  */
-let applyPose: (pose: ListenerPose) => void = () => {}
+let applyPose: (pose: ListenerPose) => void = () => {};
 
 /**
  * The pose most recently handed to `setListenerPose`. Sources read this to work out how
@@ -57,62 +57,67 @@ let applyPose: (pose: ListenerPose) => void = () => {}
  * re-read from the AudioListener because the smoothed AudioParam values lag by design.
  */
 const currentPose: ListenerPose = {
-  position: { x: 0, y: 0, z: 0 },
-  forward: { x: 0, y: 0, z: -1 },
-}
+    position: { x: 0, y: 0, z: 0 },
+    forward: { x: 0, y: 0, z: -1 },
+};
 
 /** True when the browser only has the deprecated listener API. Exposed for diagnostics. */
-let usingLegacyListener = false
+let usingLegacyListener = false;
 
 /**
  * Creates the context on first use. It will be `suspended` until a user gesture calls
  * `resumeAudio()`; that is a browser autoplay rule, not something we can design around.
  */
 export function audioContext(): AudioContext {
-  if (ctx) return ctx
+    if (ctx) return ctx;
 
-  const Ctor = window.AudioContext ?? window.webkitAudioContext
-  if (!Ctor) throw new Error('Web Audio API is not available in this browser.')
-  ctx = new Ctor({ latencyHint: 'interactive' })
+    const Ctor = window.AudioContext ?? window.webkitAudioContext;
+    if (!Ctor)
+        throw new Error("Web Audio API is not available in this browser.");
+    ctx = new Ctor({ latencyHint: "interactive" });
 
-  master = ctx.createGain()
-  master.gain.value = AUDIO.MASTER_VOLUME_DEFAULT
-  master.connect(ctx.destination)
+    master = ctx.createGain();
+    master.gain.value = AUDIO.MASTER_VOLUME_DEFAULT;
+    master.connect(ctx.destination);
 
-  configureListener(ctx)
-  return ctx
+    configureListener(ctx);
+    return ctx;
 }
 
 /** The master gain every sound in the game passes through. */
 export function masterGain(): GainNode {
-  audioContext()
-  return master as GainNode
+    audioContext();
+    return master as GainNode;
 }
 
 /** 0..1. Applied smoothly so a volume change is never a click. */
 export function setMasterVolume(volume: number): void {
-  masterVolumeTarget = clamp(volume, 0, 1)
-  const now = audioContext().currentTime
-  masterGain().gain.setTargetAtTime(masterVolumeTarget, now, AUDIO.PARAM_SMOOTHING)
+    masterVolumeTarget = clamp(volume, 0, 1);
+    const now = audioContext().currentTime;
+    masterGain().gain.setTargetAtTime(
+        masterVolumeTarget,
+        now,
+        AUDIO.PARAM_SMOOTHING
+    );
 }
 
 /** The requested volume, not the instantaneous value of the ramping gain node. */
 export function masterVolume(): number {
-  return masterVolumeTarget
+    return masterVolumeTarget;
 }
 
 /** Resolves once the context is running. Must be called from a user-gesture handler. */
 export async function resumeAudio(): Promise<void> {
-  const c = audioContext()
-  if (c.state !== 'running') await c.resume()
+    const c = audioContext();
+    if (c.state !== "running") await c.resume();
 }
 
 export function isAudioRunning(): boolean {
-  return ctx !== null && ctx.state === 'running'
+    return ctx !== null && ctx.state === "running";
 }
 
 export function isUsingLegacyListener(): boolean {
-  return usingLegacyListener
+    return usingLegacyListener;
 }
 
 /**
@@ -120,23 +125,23 @@ export function isUsingLegacyListener(): boolean {
  * PannerNode triggers downmix behaviour that undoes the HRTF work.
  */
 export function noiseBuffer(): AudioBuffer {
-  const c = audioContext()
-  if (noise) return noise
+    const c = audioContext();
+    if (noise) return noise;
 
-  const length = Math.floor(c.sampleRate * AUDIO.NOISE_BUFFER_SECONDS)
-  const buffer = c.createBuffer(1, length, c.sampleRate)
-  const data = buffer.getChannelData(0)
-  // Deterministic PRNG rather than Math.random: identical noise every run makes A/B
-  // tuning of the wall and tick cues repeatable.
-  let seed = 0x2545f491
-  for (let i = 0; i < length; i++) {
-    seed ^= seed << 13
-    seed ^= seed >>> 17
-    seed ^= seed << 5
-    data[i] = (seed >>> 0) / 0xffffffff * 2 - 1
-  }
-  noise = buffer
-  return buffer
+    const length = Math.floor(c.sampleRate * AUDIO.NOISE_BUFFER_SECONDS);
+    const buffer = c.createBuffer(1, length, c.sampleRate);
+    const data = buffer.getChannelData(0);
+    // Deterministic PRNG rather than Math.random: identical noise every run makes A/B
+    // tuning of the wall and tick cues repeatable.
+    let seed = 0x2545f491;
+    for (let i = 0; i < length; i++) {
+        seed ^= seed << 13;
+        seed ^= seed >>> 17;
+        seed ^= seed << 5;
+        data[i] = ((seed >>> 0) / 0xffffffff) * 2 - 1;
+    }
+    noise = buffer;
+    return buffer;
 }
 
 /**
@@ -146,63 +151,81 @@ export function noiseBuffer(): AudioBuffer {
  * because generic HRTFs localise it poorly, so the whole game lives on a plane.
  */
 export function setListenerPose(position: Vec3, forward: Vec3): void {
-  currentPose.position.x = position.x
-  currentPose.position.y = position.y
-  currentPose.position.z = position.z
-  currentPose.forward.x = forward.x
-  currentPose.forward.y = forward.y
-  currentPose.forward.z = forward.z
-  applyPose(currentPose)
+    currentPose.position.x = position.x;
+    currentPose.position.y = position.y;
+    currentPose.position.z = position.z;
+    currentPose.forward.x = forward.x;
+    currentPose.forward.y = forward.y;
+    currentPose.forward.z = forward.z;
+    applyPose(currentPose);
 }
 
 /** The pose as last set. Read by sources; never mutate the returned object. */
 export function listenerPose(): Readonly<ListenerPose> {
-  return currentPose
+    return currentPose;
 }
 
 function configureListener(c: AudioContext): void {
-  const listener = c.listener
+    const listener = c.listener;
 
-  if ('positionX' in listener && listener.positionX) {
-    // Modern path: the listener is a set of AudioParams, so it can be ramped. At 60 Hz,
-    // assigning `.value` directly would step the HRTF convolution and zipper audibly.
-    usingLegacyListener = false
-    applyPose = (pose) => {
-      const t = c.currentTime
-      const tc = AUDIO.PARAM_SMOOTHING
-      listener.positionX.setTargetAtTime(pose.position.x, t, tc)
-      listener.positionY.setTargetAtTime(pose.position.y, t, tc)
-      listener.positionZ.setTargetAtTime(pose.position.z, t, tc)
-      listener.forwardX.setTargetAtTime(pose.forward.x, t, tc)
-      listener.forwardY.setTargetAtTime(pose.forward.y, t, tc)
-      listener.forwardZ.setTargetAtTime(pose.forward.z, t, tc)
-      listener.upX.setTargetAtTime(0, t, tc)
-      listener.upY.setTargetAtTime(1, t, tc)
-      listener.upZ.setTargetAtTime(0, t, tc)
+    if ("positionX" in listener && listener.positionX) {
+        // Modern path: the listener is a set of AudioParams, so it can be ramped. At 60 Hz,
+        // assigning `.value` directly would step the HRTF convolution and zipper audibly.
+        usingLegacyListener = false;
+        applyPose = (pose) => {
+            const t = c.currentTime;
+            const tc = AUDIO.PARAM_SMOOTHING;
+            listener.positionX.setTargetAtTime(pose.position.x, t, tc);
+            listener.positionY.setTargetAtTime(pose.position.y, t, tc);
+            listener.positionZ.setTargetAtTime(pose.position.z, t, tc);
+            listener.forwardX.setTargetAtTime(pose.forward.x, t, tc);
+            listener.forwardY.setTargetAtTime(pose.forward.y, t, tc);
+            listener.forwardZ.setTargetAtTime(pose.forward.z, t, tc);
+            listener.upX.setTargetAtTime(0, t, tc);
+            listener.upY.setTargetAtTime(1, t, tc);
+            listener.upZ.setTargetAtTime(0, t, tc);
+        };
+        return;
     }
-    return
-  }
 
-  // Legacy path (older Safari). These setters are instantaneous, so the smoothing the
-  // modern path gets for free has to be absent here. In practice the player turns slowly
-  // enough relative to the frame rate that it is tolerable, and the alternative is no
-  // binaural audio at all on those builds.
-  usingLegacyListener = true
-  const legacy = listener as unknown as {
-    setPosition(x: number, y: number, z: number): void
-    setOrientation(fx: number, fy: number, fz: number, ux: number, uy: number, uz: number): void
-  }
-  applyPose = (pose) => {
-    legacy.setPosition(pose.position.x, pose.position.y, pose.position.z)
-    legacy.setOrientation(pose.forward.x, pose.forward.y, pose.forward.z, 0, 1, 0)
-  }
+    // Legacy path (older Safari). These setters are instantaneous, so the smoothing the
+    // modern path gets for free has to be absent here. In practice the player turns slowly
+    // enough relative to the frame rate that it is tolerable, and the alternative is no
+    // binaural audio at all on those builds.
+    usingLegacyListener = true;
+    const legacy = listener as unknown as {
+        setPosition(x: number, y: number, z: number): void;
+        setOrientation(
+            fx: number,
+            fy: number,
+            fz: number,
+            ux: number,
+            uy: number,
+            uz: number
+        ): void;
+    };
+    applyPose = (pose) => {
+        legacy.setPosition(pose.position.x, pose.position.y, pose.position.z);
+        legacy.setOrientation(
+            pose.forward.x,
+            pose.forward.y,
+            pose.forward.z,
+            0,
+            1,
+            0
+        );
+    };
 }
 
 /**
  * Smooths a per-frame parameter change. (spec) Always this, never `param.value = x`.
  */
-export function ramp(param: AudioParam, value: number, timeConstant = AUDIO.PARAM_SMOOTHING): void {
-  param.setTargetAtTime(value, audioContext().currentTime, timeConstant)
+export function ramp(
+    param: AudioParam,
+    value: number,
+    timeConstant = AUDIO.PARAM_SMOOTHING
+): void {
+    param.setTargetAtTime(value, audioContext().currentTime, timeConstant);
 }
 
 /**
@@ -213,18 +236,20 @@ export function ramp(param: AudioParam, value: number, timeConstant = AUDIO.PARA
  * is not universally implemented, so fall back to pinning the current value by hand.
  */
 export function cancelRamps(param: AudioParam, when: number): void {
-  const holdable = param as AudioParam & { cancelAndHoldAtTime?: (t: number) => void }
-  if (typeof holdable.cancelAndHoldAtTime === 'function') {
-    holdable.cancelAndHoldAtTime(when)
-  } else {
-    const held = param.value
-    param.cancelScheduledValues(when)
-    param.setValueAtTime(held, when)
-  }
+    const holdable = param as AudioParam & {
+        cancelAndHoldAtTime?: (t: number) => void;
+    };
+    if (typeof holdable.cancelAndHoldAtTime === "function") {
+        holdable.cancelAndHoldAtTime(when);
+    } else {
+        const held = param.value;
+        param.cancelScheduledValues(when);
+        param.setValueAtTime(held, when);
+    }
 }
 
 export function clamp(value: number, min: number, max: number): number {
-  return value < min ? min : value > max ? max : value
+    return value < min ? min : value > max ? max : value;
 }
 
 /**
@@ -233,5 +258,5 @@ export function clamp(value: number, min: number, max: number): number {
  * its travel in a range the ear treats as identical.
  */
 export function logLerp(from: number, to: number, t: number): number {
-  return from * Math.pow(to / from, clamp(t, 0, 1))
+    return from * Math.pow(to / from, clamp(t, 0, 1));
 }

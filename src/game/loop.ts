@@ -1,4 +1,4 @@
-import { LOOP } from '../config'
+import { LOOP } from "../config";
 
 /**
  * Fixed-step update loop.
@@ -12,49 +12,52 @@ import { LOOP } from '../config'
  * is the only clock the audio thread respects.
  */
 export class GameLoop {
-  private frame = 0
-  private previous = 0
-  private accumulator = 0
-  private running = false
+    private frame = 0;
+    private previous = 0;
+    private accumulator = 0;
+    private running = false;
 
-  constructor(
-    private readonly step: (dt: number) => void,
-    private readonly render: () => void = () => {},
-  ) {}
+    constructor(
+        private readonly step: (dt: number) => void,
+        private readonly render: () => void = () => {}
+    ) {}
 
-  start(): void {
-    if (this.running) return
-    this.running = true
-    this.previous = performance.now()
-    this.accumulator = 0
-    this.frame = requestAnimationFrame(this.tick)
-  }
-
-  stop(): void {
-    if (!this.running) return
-    this.running = false
-    cancelAnimationFrame(this.frame)
-  }
-
-  get isRunning(): boolean {
-    return this.running
-  }
-
-  private readonly tick = (now: number): void => {
-    if (!this.running) return
-    this.frame = requestAnimationFrame(this.tick)
-
-    // Clamped so that returning to a backgrounded tab does not try to simulate the
-    // minutes it spent hidden in one frame.
-    const elapsed = Math.min((now - this.previous) / 1000, LOOP.MAX_FRAME_TIME)
-    this.previous = now
-    this.accumulator += elapsed
-
-    while (this.accumulator >= LOOP.FIXED_DT) {
-      this.step(LOOP.FIXED_DT)
-      this.accumulator -= LOOP.FIXED_DT
+    start(): void {
+        if (this.running) return;
+        this.running = true;
+        this.previous = performance.now();
+        this.accumulator = 0;
+        this.frame = requestAnimationFrame(this.tick);
     }
 
-    this.render()
-  }
+    stop(): void {
+        if (!this.running) return;
+        this.running = false;
+        cancelAnimationFrame(this.frame);
+    }
+
+    get isRunning(): boolean {
+        return this.running;
+    }
+
+    private readonly tick = (now: number): void => {
+        if (!this.running) return;
+        this.frame = requestAnimationFrame(this.tick);
+
+        // Clamped so that returning to a backgrounded tab does not try to simulate the
+        // minutes it spent hidden in one frame.
+        const elapsed = Math.min(
+            (now - this.previous) / 1000,
+            LOOP.MAX_FRAME_TIME
+        );
+        this.previous = now;
+        this.accumulator += elapsed;
+
+        while (this.accumulator >= LOOP.FIXED_DT) {
+            this.step(LOOP.FIXED_DT);
+            this.accumulator -= LOOP.FIXED_DT;
+        }
+
+        this.render();
+    };
 }
