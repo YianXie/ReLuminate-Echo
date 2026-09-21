@@ -25,11 +25,21 @@ export interface SpeakOptions {
      * a player losing the second half of the sentence they were listening to.
      */
     priority?: boolean;
+    /**
+     * Called as the line starts being spoken, which for a queued line is later than the
+     * call to `speak()`. A caller mirroring speech into an ARIA live region writes it from
+     * here, so that several lines queued in one go reach the region one at a time, each
+     * as it is said, instead of overwriting each other on the spot.
+     *
+     * Never called for a line that is dropped from the queue before its turn.
+     */
+    onStart?: () => void;
 }
 
 interface QueueItem {
     text: string;
     resolve: () => void;
+    onStart: (() => void) | undefined;
 }
 
 class Announcer {
@@ -59,7 +69,7 @@ class Announcer {
         }
 
         return new Promise<void>((resolve) => {
-            this.queue.push({ text, resolve });
+            this.queue.push({ text, resolve, onStart: options.onStart });
             this.pump();
         });
     }
@@ -88,6 +98,7 @@ class Announcer {
         const item = this.queue.shift();
         if (!item) return;
         this.current = item;
+        item.onStart?.();
 
         if (!this.isEnabled) {
             // Muted, or the browser has no speech at all. The queue still runs, at reading

@@ -358,6 +358,16 @@ export const SPEECH = {
      */
     ESTIMATED_CHARS_PER_SECOND: 13,
     WATCHDOG_PADDING_SECONDS: 3,
+    /**
+     * Longest line the game should hand to the synthesiser in one go, characters.
+     *
+     * Desktop Chrome with Google's network voices can stop partway through an utterance
+     * of roughly fifteen seconds and never fire `end`. The watchdog keeps the queue moving
+     * but the player silently loses the rest of the sentence. 140 characters is about ten
+     * seconds at RATE, which leaves a margin. Anything longer is split into sentences and
+     * queued as separate lines; a development build warns when a line is over.
+     */
+    MAX_UTTERANCE_CHARS: 140,
 } as const;
 
 /** Player-facing settings. (spec) Exactly three, all keyboard-reachable and spoken. */

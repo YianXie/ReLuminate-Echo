@@ -9,7 +9,7 @@
  */
 
 import { masterVolume, resumeAudio, setMasterVolume } from "./audio/context";
-import { GAME, SETTINGS } from "./config";
+import { GAME, SETTINGS, SPEECH } from "./config";
 import { Radar } from "./ui/radar";
 import { TelemetryRecorder, downloadSessions } from "./telemetry";
 import { playCalibrationTone } from "./audio/cues";
@@ -23,15 +23,28 @@ import type { InputState } from "./game/player";
 
 const status = requireElement("status");
 
-/** (spec) The full control list, in one place so every channel reads the same words. */
-const CONTROLS =
-    "Left and right arrows turn. Up arrow walks forward. Space sends a sonar ping. " +
-    "Enter collects the beacon when you are on it. Escape pauses and reads your score. " +
-    "H repeats these controls.";
+/**
+ * (spec) The full control list, in one place so every channel reads the same words.
+ *
+ * One sentence per line, each queued as its own announcement. Read as a single utterance
+ * this ran to some 250 characters, and Chrome's network voices can give up partway
+ * through anything that long without saying so. See SPEECH.MAX_UTTERANCE_CHARS.
+ */
+const CONTROLS: readonly string[] = [
+    "Left and right arrows turn.",
+    "Up arrow walks forward.",
+    "Space sends a sonar ping.",
+    "Enter collects the beacon when you are on it.",
+    "Escape pauses and reads your score.",
+    "H repeats these controls.",
+];
 
-const SETTINGS_HELP =
-    "S turns speech on and off. Minus and equals change the volume. " +
-    "C switches high contrast visuals. D downloads your session data.";
+const SETTINGS_HELP: readonly string[] = [
+    "S turns speech on and off.",
+    "Minus and equals change the volume.",
+    "C switches high contrast visuals.",
+    "D downloads your session data.",
+];
 
 /** Keys the game owns. Swallowing their defaults stops arrows and space scrolling the page. */
 const HANDLED_KEYS = new Set([
@@ -132,8 +145,8 @@ async function runOnboarding(): Promise<void> {
         "And this tone is in your right ear.",
         () => playCalibrationTone("right"),
         "If those arrived the wrong way round, your headphones are reversed. Swap them over.",
-        CONTROLS,
-        SETTINGS_HELP,
+        ...CONTROLS,
+        ...SETTINGS_HELP,
         "Press Space to begin.",
     ];
 
@@ -215,7 +228,7 @@ function onKeyDown(event: KeyboardEvent): void {
             break;
         case "h":
         case "H":
-            announce(CONTROLS, true);
+            repeatControls();
             break;
         case "s":
         case "S":
@@ -257,6 +270,15 @@ function onKeyUp(event: KeyboardEvent): void {
         default:
             break;
     }
+}
+
+/**
+ * (spec) H reads the controls again. The first sentence flushes whatever was waiting and
+ * the rest queue up behind it in one go, so nothing else can land in the middle of the
+ * list. A later priority line drops the remainder, which is right: it is more urgent.
+ */
+function repeatControls(): void {
+    CONTROLS.forEach((line, index) => void announce(line, index === 0));
 }
 
 /** (spec) Space begins the game, pings during play, and starts the next round after one ends. */
@@ -405,10 +427,28 @@ function releaseAllKeys(): void {
  * (spec) Everything is said aloud and written to the ARIA live region, so a player using
  * their own screen reader with our speech muted gets the same information. Resolves once
  * the line has been spoken, which is what lets onboarding sequence itself.
+ *
+ * The live region is written as the line starts being spoken, not as it is queued.
+ * Several lines queued together, as H does, would otherwise overwrite each other at once
+ * and a screen reader would catch only the last.
  */
 function announce(message: string, priority = false): Promise<void> {
-    status.textContent = message;
-    return speech.speak(message, { priority });
+    if (
+        import.meta.env.DEV &&
+        message.length > SPEECH.MAX_UTTERANCE_CHARS
+    ) {
+        console.warn(
+            `Announcement is ${message.length} characters, over ` +
+                `SPEECH.MAX_UTTERANCE_CHARS (${SPEECH.MAX_UTTERANCE_CHARS}). ` +
+                `Split it into sentences: "${message}"`
+        );
+    }
+    return speech.speak(message, {
+        priority,
+        onStart: () => {
+            status.textContent = message;
+        },
+    });
 }
 
 function requireElement(id: string): HTMLElement {
