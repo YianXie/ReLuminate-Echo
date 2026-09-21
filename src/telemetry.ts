@@ -37,7 +37,13 @@ export interface AcquisitionRecord {
     overshootDistance: number;
 }
 
+/** A practice round is recorded like any other, and must never be mistaken for one. */
+export type RoundMode = "practice" | "timed";
+
 export interface RoundRecord {
+    /** TELEMETRY.SCHEMA_VERSION at the time of recording. */
+    schemaVersion: number;
+    mode: RoundMode;
     /** ISO timestamp of when the round started. */
     startedAt: string;
     score: number;
@@ -76,6 +82,7 @@ interface Hunt {
 
 export class TelemetryRecorder {
     private difficulty: DifficultyParameters | null = null;
+    private mode: RoundMode = "timed";
     private startedAt = "";
     private elapsed = 0;
     private pings = 0;
@@ -91,8 +98,9 @@ export class TelemetryRecorder {
     /** False until the round's first sample, which has no previous step to compare with. */
     private sampled = false;
 
-    beginRound(difficulty: DifficultyParameters): void {
+    beginRound(difficulty: DifficultyParameters, mode: RoundMode): void {
         this.difficulty = difficulty;
+        this.mode = mode;
         this.startedAt = new Date().toISOString();
         this.elapsed = 0;
         this.pings = 0;
@@ -188,6 +196,8 @@ export class TelemetryRecorder {
     /** Finalises the round, appends it to storage and returns it. */
     endRound(score: number): RoundRecord {
         const record: RoundRecord = {
+            schemaVersion: TELEMETRY.SCHEMA_VERSION,
+            mode: this.mode,
             startedAt: this.startedAt,
             score,
             hazardHits: this.hazardHits,

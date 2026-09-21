@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LOOP } from "../src/config";
+import { LOOP, TELEMETRY } from "../src/config";
 import { defaultParameters } from "../src/game/difficulty";
 import { TelemetryRecorder, type TelemetrySample } from "../src/telemetry";
 
@@ -42,9 +42,39 @@ function distances(from: number, to: number, steps = 40): number[] {
 
 function begin(): TelemetryRecorder {
     const recorder = new TelemetryRecorder();
-    recorder.beginRound(defaultParameters());
+    recorder.beginRound(defaultParameters(), "timed");
     return recorder;
 }
+
+describe("round records", () => {
+    it("are stamped with the schema version and the mode they were played in", () => {
+        const recorder = new TelemetryRecorder();
+
+        recorder.beginRound(defaultParameters(), "practice");
+        const practice = recorder.endRound(0);
+        expect(practice.schemaVersion).toBe(TELEMETRY.SCHEMA_VERSION);
+        expect(practice.mode).toBe("practice");
+
+        recorder.beginRound(defaultParameters(), "timed");
+        expect(recorder.endRound(0).mode).toBe("timed");
+    });
+
+    it("are kept apart from the rounds recorded before the fixes", () => {
+        expect(TELEMETRY.SCHEMA_VERSION).toBe(2);
+        expect(TELEMETRY.STORAGE_KEY).toBe("reluminate-echo.sessions.v2");
+    });
+
+    it("count a hunt still running at the end as abandoned, not acquired", () => {
+        const recorder = begin();
+        feed(recorder, [standing(8, 0), walking(7.95, 0)]);
+        recorder.recordCollect();
+        feed(recorder, [walking(9, 50)]);
+
+        const record = recorder.endRound(1);
+        expect(record.acquisitions).toHaveLength(1);
+        expect(record.abandonedAcquisitions).toBe(1);
+    });
+});
 
 describe("angular error at walk start", () => {
     it("is captured on the step the player starts walking", () => {
@@ -126,7 +156,7 @@ describe("angular error at walk start", () => {
         feed(recorder, [standing(8, 2), walking(7.95, 2)]);
         recorder.endRound(0);
 
-        recorder.beginRound(defaultParameters());
+        recorder.beginRound(defaultParameters(), "timed");
         feed(recorder, [standing(8, 21), walking(7.95, 21)]);
         recorder.recordCollect();
 

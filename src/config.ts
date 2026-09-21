@@ -381,7 +381,14 @@ export const SETTINGS = {
  * calls, nothing leaves the machine.
  */
 export const TELEMETRY = {
-    STORAGE_KEY: "reluminate-echo.sessions",
+    /**
+     * Bumped with SCHEMA_VERSION. Rounds stored under the v0.1 key were recorded with a
+     * walk-start angle and an overshoot that were both wrong, so they are neither read,
+     * migrated nor deleted: they stay where they are, out of the corrected data.
+     */
+    STORAGE_KEY: "reluminate-echo.sessions.v2",
+    /** Stamped on every record, so an exported file says which rules it was measured under. */
+    SCHEMA_VERSION: 2,
     /** Oldest rounds are dropped past this, so a long demo session cannot fill localStorage. */
     MAX_ROUNDS_STORED: 200,
     /**

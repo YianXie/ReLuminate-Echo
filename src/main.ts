@@ -161,7 +161,7 @@ function startRound(): void {
     if (!world) return;
     const parameters = difficulty.next();
     round = new Round(parameters);
-    telemetry.beginRound(parameters);
+    telemetry.beginRound(parameters, "timed");
     world.start(parameters);
     machine.enter("playing");
     announce(
