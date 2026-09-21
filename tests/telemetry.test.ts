@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { LOOP, TELEMETRY } from "../src/config";
-import { defaultParameters } from "../src/game/difficulty";
+import type { DifficultyParameters } from "../src/game/difficulty";
 import { TelemetryRecorder, type TelemetrySample } from "../src/telemetry";
 
 /**
@@ -10,6 +10,22 @@ import { TelemetryRecorder, type TelemetrySample } from "../src/telemetry";
  */
 
 const DT = LOOP.FIXED_DT;
+
+/**
+ * Written out rather than taken from the difficulty table, so that retuning a level
+ * cannot move the overshoot arming radius under these tests. Arming is three collect
+ * radii, 4.5 units here.
+ */
+const PARAMETERS: DifficultyParameters = {
+    level: 4,
+    hazardCount: 3,
+    roundSeconds: 60,
+    hazardPenalty: 5,
+    collectRadius: 1.5,
+    hazardRadius: 1.2,
+    minSpawnDistance: 6,
+    acquireBudgetSeconds: 14,
+};
 
 function standing(distance: number, bearing: number): TelemetrySample {
     return {
@@ -42,7 +58,7 @@ function distances(from: number, to: number, steps = 40): number[] {
 
 function begin(): TelemetryRecorder {
     const recorder = new TelemetryRecorder();
-    recorder.beginRound(defaultParameters(), "timed");
+    recorder.beginRound(PARAMETERS, "timed");
     return recorder;
 }
 
@@ -50,12 +66,12 @@ describe("round records", () => {
     it("are stamped with the schema version and the mode they were played in", () => {
         const recorder = new TelemetryRecorder();
 
-        recorder.beginRound(defaultParameters(), "practice");
+        recorder.beginRound(PARAMETERS, "practice");
         const practice = recorder.endRound(0);
         expect(practice.schemaVersion).toBe(TELEMETRY.SCHEMA_VERSION);
         expect(practice.mode).toBe("practice");
 
-        recorder.beginRound(defaultParameters(), "timed");
+        recorder.beginRound(PARAMETERS, "timed");
         expect(recorder.endRound(0).mode).toBe("timed");
     });
 
@@ -73,6 +89,18 @@ describe("round records", () => {
         const record = recorder.endRound(1);
         expect(record.acquisitions).toHaveLength(1);
         expect(record.abandonedAcquisitions).toBe(1);
+        // One sample of that hunt was taken, so it had been running for one step.
+        expect(record.abandonedSeconds).toEqual([0.017]);
+    });
+
+    it("report no abandoned hunt when the round ends on the step a beacon was collected", () => {
+        const recorder = begin();
+        feed(recorder, [standing(8, 0), walking(7.95, 0)]);
+        recorder.recordCollect();
+
+        const record = recorder.endRound(1);
+        expect(record.abandonedAcquisitions).toBe(0);
+        expect(record.abandonedSeconds).toEqual([]);
     });
 });
 
@@ -156,7 +184,7 @@ describe("angular error at walk start", () => {
         feed(recorder, [standing(8, 2), walking(7.95, 2)]);
         recorder.endRound(0);
 
-        recorder.beginRound(defaultParameters(), "timed");
+        recorder.beginRound(PARAMETERS, "timed");
         feed(recorder, [standing(8, 21), walking(7.95, 21)]);
         recorder.recordCollect();
 
@@ -175,7 +203,7 @@ describe("angular error at walk start", () => {
         feed(recorder, [standing(8, 2), lastSample]);
         recorder.endRound(0);
 
-        recorder.beginRound(defaultParameters(), "timed");
+        recorder.beginRound(PARAMETERS, "timed");
         feed(recorder, [walking(9, 118), walking(8.95, 118)]);
         recorder.recordCollect();
 

@@ -19,15 +19,19 @@ export const GAME = {
     PLAYER_SPEED: 3,
     /** (spec) Rotation speed, degrees/sec. Faster is quicker to aim, harder to hold a lock. */
     TURN_SPEED: 120,
-    /** (spec) Distance at which the target can be collected, units. */
+    /**
+     * (spec) Distance at which the target can be collected, units. Used by the practice
+     * round; a timed round takes its own from DIFFICULTY.LEVELS.
+     */
     COLLECT_RADIUS: 1.5,
-    /** (spec) Distance at which a hazard is struck, units. */
+    /** (spec) Distance at which a hazard is struck, units. Timed rounds: see DIFFICULTY.LEVELS. */
     HAZARD_RADIUS: 1.2,
-    /** (spec) Hazards per round. */
-    HAZARD_COUNT: 3,
-    /** (spec) Round length, seconds. */
+    /**
+     * (spec) Round length, seconds. The same at every difficulty level, so that scores stay
+     * comparable from round to round.
+     */
     ROUND_SECONDS: 60,
-    /** (spec) Seconds lost per hazard collision. */
+    /** (spec) Seconds lost per hazard collision. Also the same at every level. */
     HAZARD_PENALTY: 5,
     /** (spec) Minimum seconds between sonar pings. */
     PING_COOLDOWN: 1.5,
@@ -44,7 +48,10 @@ export const GAME = {
      */
     CENTRE_TOLERANCE: 5,
 
-    /** Nothing spawns closer than this to the player, units. Keeps every hunt a real hunt. */
+    /**
+     * Nothing spawns closer than this to the player, units. Keeps every hunt a real hunt.
+     * Used by the practice round; a timed round takes its own from DIFFICULTY.LEVELS.
+     */
     MIN_SPAWN_DISTANCE: 6,
     /** Hazards are kept at least this far apart from each other and from the target, units. */
     MIN_ENTITY_SEPARATION: 4,
@@ -84,6 +91,63 @@ export const PRACTICE = {
         { bearingDeg: 90, distance: 10 },
         { bearingDeg: -135, distance: 10 },
     ],
+} as const;
+
+/**
+ * Adaptive difficulty: a 1-up / 2-down staircase, the standard psychophysics procedure.
+ * Two beacons in a row found within the time budget step the difficulty up one level; one
+ * miss steps it down one. That settles where the player succeeds about 71% of the time,
+ * which is hard enough to stay interesting and easy enough not to feel hopeless.
+ *
+ * The staircase moves hunt by hunt, but a round is played at one level from start to
+ * finish: changing the hazard layout under a player who cannot see it would be jarring
+ * and unfair. Nothing is stored; every page load starts again from START_LEVEL.
+ */
+export const DIFFICULTY = {
+    /**
+     * Off pins every round to START_LEVEL, for controlled testing where rounds have to be
+     * comparable with each other.
+     */
+    ADAPTIVE: true as boolean,
+
+    /**
+     * Easiest first. Each step adds a hazard, shrinks the beacon, swells the hazards,
+     * pushes new beacons further away and tightens the time allowed to find one.
+     * The fourth row is the fixed difficulty v0.1 shipped with.
+     *
+     * `acquireBudgetSeconds` is what counts as a success at that level: a beacon collected
+     * within it. A hunt that runs past it is a failure, collected or not; one the clock
+     * cuts short inside it counts as neither. It does nothing to the round itself. Too
+     * generous and the staircase only ever climbs; too tight and an unlucky far spawn
+     * reads as a failure of skill.
+     *
+     * `hazardCount` may never exceed AUDIO.MAX_CONCURRENT_SOURCES - NON_HAZARD_SOURCES.
+     * The table is checked against that at startup and the game refuses to start if it is
+     * broken, because the alternative is a hazard with no voice.
+     */
+    LEVELS: [
+        { hazardCount: 0, collectRadius: 2.0, hazardRadius: 1.0, minSpawnDistance: 6, acquireBudgetSeconds: 20 },
+        { hazardCount: 1, collectRadius: 1.8, hazardRadius: 1.1, minSpawnDistance: 7, acquireBudgetSeconds: 18 },
+        { hazardCount: 2, collectRadius: 1.6, hazardRadius: 1.2, minSpawnDistance: 8, acquireBudgetSeconds: 16 },
+        { hazardCount: 3, collectRadius: 1.5, hazardRadius: 1.2, minSpawnDistance: 9, acquireBudgetSeconds: 14 },
+        { hazardCount: 4, collectRadius: 1.3, hazardRadius: 1.3, minSpawnDistance: 10, acquireBudgetSeconds: 12 },
+        { hazardCount: 5, collectRadius: 1.2, hazardRadius: 1.4, minSpawnDistance: 11, acquireBudgetSeconds: 10 },
+    ],
+    /**
+     * Index into LEVELS of the first round, counting from 0. The player hears levels
+     * counted from 1, so 2 here is announced as "Level 3". Below the middle on purpose: a
+     * first round that is too easy costs one round, one that is too hard can cost a player.
+     */
+    START_LEVEL: 2,
+    /** The "2" in 1-up / 2-down. Raising it makes the game settle somewhere easier. */
+    SUCCESSES_TO_STEP_UP: 2,
+    /**
+     * Most levels the difficulty may move between one round and the next, either way.
+     * A single very good or very bad minute should nudge the next round, not lurch it.
+     */
+    MAX_LEVEL_CHANGE_PER_ROUND: 2,
+    /** Pooled sources that are never available to hazards: one for the beacon, one for the wall. */
+    NON_HAZARD_SOURCES: 2,
 } as const;
 
 /** Fixed simulation step. Decoupled from the display refresh rate so physics is deterministic. */

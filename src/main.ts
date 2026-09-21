@@ -220,8 +220,9 @@ function startRound(): void {
     telemetry.beginRound(parameters, "timed");
     world.start(parameters);
     machine.enter("playing");
+    // The level is the one thing about this round the player cannot work out by ear.
     announce(
-        `Round started. ${parameters.roundSeconds} seconds. Find the beacon.`,
+        `Level ${parameters.level}. ${parameters.roundSeconds} seconds. Find the beacon.`,
         true
     );
 }
@@ -281,12 +282,16 @@ function endRound(): void {
     if (!round || !world) return;
     machine.enter("roundOver");
     world.stop();
+    // The staircase is fed from the telemetry record rather than keeping a second set of
+    // per-hunt timings: what adapts the game and what gets exported cannot then disagree.
+    const record = telemetry.endRound(round.score);
     difficulty.record({
         score: round.score,
         hazardHits: round.hazardHits,
         durationSeconds: round.elapsed,
+        acquisitionSeconds: record.acquisitions.map((a) => a.secondsToAcquire),
+        abandonedHuntSeconds: record.abandonedSeconds,
     });
-    telemetry.endRound(round.score);
     const plural = round.score === 1 ? "beacon" : "beacons";
     announce(
         `Round over. You found ${round.score} ${plural}. Press Space to play again.`,

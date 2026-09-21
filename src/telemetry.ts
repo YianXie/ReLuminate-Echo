@@ -61,6 +61,11 @@ export interface RoundRecord {
     acquisitions: AcquisitionRecord[];
     /** Beacons that were still being hunted when the clock ran out. Not counted above. */
     abandonedAcquisitions: number;
+    /**
+     * How long each of those hunts had been running, seconds. A hunt cut short inside its
+     * time budget says nothing either way; one that had already overrun it was a miss.
+     */
+    abandonedSeconds: number[];
 }
 
 /** A frame's worth of the player's relationship to the current beacon. */
@@ -198,6 +203,10 @@ export class TelemetryRecorder {
 
     /** Finalises the round, appends it to storage and returns it. */
     endRound(score: number): RoundRecord {
+        const abandoned =
+            this.hunt && this.hunt.elapsed > 0
+                ? [round3(this.hunt.elapsed)]
+                : [];
         const record: RoundRecord = {
             schemaVersion: TELEMETRY.SCHEMA_VERSION,
             mode: this.mode,
@@ -208,7 +217,8 @@ export class TelemetryRecorder {
             durationSeconds: round3(this.elapsed),
             difficulty: this.difficulty ?? ({} as DifficultyParameters),
             acquisitions: this.acquisitions,
-            abandonedAcquisitions: this.hunt && this.hunt.elapsed > 0 ? 1 : 0,
+            abandonedAcquisitions: abandoned.length,
+            abandonedSeconds: abandoned,
         };
         this.hunt = null;
         append(record);

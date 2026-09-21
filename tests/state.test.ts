@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { GAME } from "../src/config";
-import { defaultParameters, practiceParameters } from "../src/game/difficulty";
+import { levelParameters, practiceParameters } from "../src/game/difficulty";
 import { Round, StateMachine, type Phase } from "../src/game/state";
 
 const PHASES: readonly Phase[] = [
@@ -83,7 +83,7 @@ describe("StateMachine", () => {
 
 describe("Round", () => {
     it("counts down from the round length and ends at zero", () => {
-        const round = new Round(defaultParameters());
+        const round = new Round(levelParameters(0));
         expect(round.timeRemaining).toBe(GAME.ROUND_SECONDS);
         expect(round.isOver).toBe(false);
 
@@ -95,7 +95,7 @@ describe("Round", () => {
     });
 
     it("takes the penalty off the clock, never below zero, and leaves the score alone", () => {
-        const round = new Round(defaultParameters());
+        const round = new Round(levelParameters(0));
         round.collect();
         round.tick(GAME.ROUND_SECONDS - 2);
         round.penalise();
@@ -107,7 +107,7 @@ describe("Round", () => {
     });
 
     it("starts with the ping ready, then makes the player wait out the cooldown", () => {
-        const round = new Round(defaultParameters());
+        const round = new Round(levelParameters(0));
         expect(round.usePing()).toBe(true);
         expect(round.usePing()).toBe(false);
 
@@ -119,7 +119,7 @@ describe("Round", () => {
     });
 
     it("gives the ten-second warning once, the first time it is asked after the threshold", () => {
-        const round = new Round(defaultParameters());
+        const round = new Round(levelParameters(0));
         round.tick(GAME.ROUND_SECONDS - GAME.WARNING_SECONDS - 1);
         expect(round.takeWarning()).toBe(false);
 
@@ -131,7 +131,7 @@ describe("Round", () => {
     });
 
     it("warns once even when a penalty jumps straight past the threshold", () => {
-        const round = new Round(defaultParameters());
+        const round = new Round(levelParameters(0));
         round.tick(GAME.ROUND_SECONDS - GAME.WARNING_SECONDS - 1);
         round.penalise();
         expect(round.takeWarning()).toBe(true);
