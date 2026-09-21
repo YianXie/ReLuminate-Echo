@@ -30,8 +30,9 @@ export interface AcquisitionRecord {
     closestApproach: number;
     /**
      * (spec) How far past the beacon the player carried on before coming back, units.
-     * Measured as the furthest they got after their closest approach. Zero when they
-     * walked straight to it and stopped.
+     * Measured as the furthest they got after a closest approach, and the largest such
+     * figure if they passed it more than once. Zero when they walked straight to it and
+     * stopped.
      */
     overshootDistance: number;
 }
@@ -67,6 +68,8 @@ interface Hunt {
     closestApproach: number;
     /** Furthest from the beacon since the closest approach. */
     furthestSinceClosest: number;
+    /** Largest overshoot banked from earlier, shallower approaches in this hunt. */
+    maxOvershoot: number;
     /** Overshoot is only measured once the player has actually been near the beacon. */
     armed: boolean;
 }
@@ -127,6 +130,13 @@ export class TelemetryRecorder {
 
         const distance = sample.distanceToTarget;
         if (distance < hunt.closestApproach) {
+            // Bank the overshoot measured so far before starting again from the new
+            // closest point. Without this, walking past the beacon and then coming back
+            // closer than before erased the very overshoot this exists to catch.
+            hunt.maxOvershoot = Math.max(
+                hunt.maxOvershoot,
+                hunt.furthestSinceClosest - hunt.closestApproach
+            );
             hunt.closestApproach = distance;
             hunt.furthestSinceClosest = distance;
             if (!this.difficulty) return;
@@ -165,7 +175,11 @@ export class TelemetryRecorder {
                 hunt.closestApproach === Infinity ? 0 : hunt.closestApproach
             ),
             overshootDistance: round3(
-                Math.max(0, hunt.furthestSinceClosest - hunt.closestApproach)
+                Math.max(
+                    0,
+                    hunt.maxOvershoot,
+                    hunt.furthestSinceClosest - hunt.closestApproach
+                )
             ),
         });
         this.hunt = newHunt();
@@ -256,6 +270,7 @@ function newHunt(): Hunt {
         angularErrorAtWalkStart: null,
         closestApproach: Infinity,
         furthestSinceClosest: 0,
+        maxOvershoot: 0,
         armed: false,
     };
 }
