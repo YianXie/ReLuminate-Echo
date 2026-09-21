@@ -30,12 +30,16 @@ const status = requireElement("status");
  * this ran to some 250 characters, and Chrome's network voices can give up partway
  * through anything that long without saying so. See SPEECH.MAX_UTTERANCE_CHARS.
  */
-const CONTROLS: readonly string[] = [
+const MOVEMENT_CONTROLS: readonly string[] = [
     "Left and right arrows turn.",
     "Up arrow walks forward.",
+];
+
+const CONTROLS: readonly string[] = [
+    ...MOVEMENT_CONTROLS,
     "Space sends a sonar ping.",
     "Enter collects the beacon when you are on it.",
-    "Escape pauses and reads your score.",
+    "Escape pauses and reads your score, or ends a practice round.",
     "P starts a practice round.",
     "T starts a timed round.",
     "H repeats these controls.",
@@ -237,6 +241,11 @@ function startPractice(): void {
     placePracticeBeacon();
     machine.enter("practice");
     announce(PRACTICE_FIRST, true);
+    // The welcome line invites the player to skip straight here, and one who does has
+    // been told to turn and walk but never which keys do that. Queued behind the
+    // instruction rather than ahead of it, so a player who already knows and gets on with
+    // it never hears them: collecting the first beacon flushes whatever is still waiting.
+    for (const line of MOVEMENT_CONTROLS) void announce(line);
 }
 
 /**
@@ -318,6 +327,12 @@ function step(dt: number): void {
 function onKeyDown(event: KeyboardEvent): void {
     if (HANDLED_KEYS.has(event.key)) event.preventDefault();
     if (event.repeat) return;
+    // A chord on a letter belongs to the browser, not the game: Cmd+P is "print", not
+    // "start a practice round under the print dialog". Movement, Space, Enter and Escape
+    // stay live with a modifier down, so a screen-reader user still holding Control from
+    // silencing their own speech does not lose a turn. Shift is left alone: "+" needs it.
+    const chord = event.ctrlKey || event.metaKey || event.altKey;
+    if (chord && !HANDLED_KEYS.has(event.key)) return;
 
     switch (event.key) {
         case "ArrowLeft":
