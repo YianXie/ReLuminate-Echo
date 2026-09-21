@@ -35,6 +35,12 @@ export const GAME = {
      * (spec) Half-width of the "you are aimed at the target" window, degrees.
      * Wider is easier to find but gives a vaguer heading; narrower is a precise
      * bearing that is fiddly to hold while walking.
+     *
+     * This is the floor, and it is what applies across most of the arena. Close in, the
+     * window widens to the angle the collect radius itself covers, because a fixed five
+     * degrees is narrower than the beacon once you are near it and the tick flickers while
+     * you walk straight at the thing. With a 1.5 unit radius the widening starts at about
+     * 17 units and reaches 27 degrees at 3 units.
      */
     CENTRE_TOLERANCE: 5,
 
@@ -188,6 +194,9 @@ export const AUDIO = {
     IDLE_OSC_FREQUENCY: 440,
 } as const;
 
+/** How the centre-lock tick behaves while the player holds their aim. See CUES.CENTRE_TICK. */
+export type CentreTickMode = "continuous" | "edge";
+
 /**
  * Sound definitions. (spec) SPEC.md §6 fixes the frequencies and shapes; the gains and
  * envelope times are the parts to tune by ear.
@@ -298,6 +307,25 @@ export const CUES = {
         gain: 0.3,
         /** Rate limit, seconds. Below ~0.15 it machine-guns and stops reading as a discrete signal. */
         MIN_INTERVAL: 0.22,
+        /**
+         * What the tick does while the player stays aimed.
+         *
+         * 'continuous' repeats every MIN_INTERVAL for as long as they are on axis. It is a
+         * constant reassurance, and it is also a fifth of a second of clicking laid over an
+         * 8 Hz beacon at exactly the moment the player is trying to hear the pulse rate.
+         *
+         * 'edge' ticks once on entering the window, then only every EDGE_REPEAT_INTERVAL
+         * while they stay in it. Leaving and coming back ticks at once, so sweeping across
+         * the beacon still marks the spot. Quieter, at the cost of less feedback that a
+         * long straight walk is still on line. Chosen by ear.
+         */
+        MODE: "edge" as CentreTickMode,
+        /**
+         * Seconds between reminder ticks in 'edge' mode. Shorter drifts back towards
+         * 'continuous'; much longer and a player who wanders off line while walking is not
+         * told until they have gone a few units wrong.
+         */
+        EDGE_REPEAT_INTERVAL: 1.0,
     },
 
     /** Left/right headphone calibration tone used during onboarding. */

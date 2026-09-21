@@ -53,8 +53,11 @@ browser gives you — is good at telling left from right and bad at telling fron
 back. So the game is built around turning rather than around standing still and judging:
 
 - **Sweep, don't stare.** Rotate until the beacon sounds centred.
-- **Listen for the tick.** A short, dry click means you are aimed within five degrees of
-  the beacon. It is a yes/no signal, so you never have to judge a small angle.
+- **Listen for the tick.** A short, dry click means you are aimed at the beacon: within
+  five degrees from across the arena, and a wider window as you close in, so it does not
+  cut out on the final approach. It clicks the moment you come on line and about once a
+  second while you stay there. It is a yes/no signal, so you never have to judge a small
+  angle.
 - **Count the pulses.** The beacon pulses twice a second from across the arena and eight
   times a second when you are on top of it. If the pulses slow down, you are walking the
   wrong way.
@@ -112,7 +115,7 @@ and the redundancy is the point:
 | Pulse rate | How close you are | 2 per second far, 8 per second near |
 | Timbre | What it is | Beacon = sine, hazard = sawtooth, wall = filtered noise |
 | Rear shadowing | That it is behind you | Extra lowpass as a source moves off-axis |
-| Centre-lock tick | That you are aimed at it | A dry click inside five degrees |
+| Centre-lock tick | That you are aimed at it | A dry click inside five degrees, or inside the beacon's own width once that is wider |
 
 Two things are worth knowing if you are reading the code.
 
