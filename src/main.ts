@@ -138,7 +138,7 @@ async function runOnboarding(): Promise<void> {
     machine.enter("onboarding");
 
     const steps: Array<string | (() => Promise<void>)> = [
-        "Welcome to ReLuminate Echo. A beacon hunt you play with your ears.",
+        "Welcome to ReLuminate Echo. A beacon hunt you play with your ears. Press Space at any time to skip.",
         "Put on headphones now. The game is played entirely by ear, and it will not work on speakers.",
         "Now a quick headphone check. This tone is in your left ear.",
         () => playCalibrationTone("left"),
