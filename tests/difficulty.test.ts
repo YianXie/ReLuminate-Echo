@@ -159,6 +159,22 @@ describe("the staircase", () => {
         expect(after(controller, [6, 6])).toBe(3);
     });
 
+    it("goes on judging against the level played even if two rounds are reported back to back", () => {
+        const levels = LEVELS.map((level, index) => ({
+            ...level,
+            acquireBudgetSeconds: 20 - index * 4,
+        }));
+        const controller = new Staircase({ levels, startLevel: 4 });
+        controller.next();
+        // The first report drops the staircase to level 4, whose budget of 8 seconds would
+        // forgive a six-second hunt. The round was played at level 5, which allows 4, so
+        // the second report is a miss as well. One miss each keeps this inside the
+        // per-round cap, which would otherwise hide the difference.
+        controller.record(outcome([6]));
+        controller.record(outcome([6]));
+        expect(controller.next().level).toBe(3);
+    });
+
     it("leaves the level alone after a round in which nothing was hunted", () => {
         const controller = staircase(2);
         controller.next();
