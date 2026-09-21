@@ -92,6 +92,20 @@
         border-left-width: 6px;
       }
 
+      /*
+       * Shown only on a device with no keyboard. No display rule here on purpose: the
+       * `hidden` attribute has to keep winning until the script removes it.
+       */
+      #device-notice {
+        margin: 0 0 1.5rem;
+        padding: 0.9rem 1rem;
+        border: 2px solid var(--coral);
+        border-radius: 6px;
+        background: var(--panel);
+        font-size: 1.1rem;
+        font-weight: 600;
+      }
+
       /* The muted/green distinction disappears at maximum contrast, so lean on weight. */
       :root[data-contrast='high'] th,
       :root[data-contrast='high'] td {
@@ -175,6 +189,13 @@
   </head>
   <body>
     <main>
+      <!--
+        Filled in and revealed by main.ts on a touch device with no keyboard, where the
+        "press any key" prompt below can never be answered. Informational only: it blocks
+        nothing, and a tablet with a hardware keyboard plays as normal.
+      -->
+      <p id="device-notice" hidden></p>
+
       <h1>ReLuminate Echo</h1>
       <p class="tagline">A beacon hunt you play with your ears. Headphones on, monitor off.</p>
 

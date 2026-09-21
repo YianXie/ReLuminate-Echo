@@ -46,6 +46,16 @@ const SETTINGS_HELP: readonly string[] = [
     "D downloads your session data.",
 ];
 
+/**
+ * A primary input that cannot hover and is coarse: a phone or a tablet, where there is no
+ * key to press and the page would otherwise sit there looking broken.
+ */
+const NO_KEYBOARD_QUERY = "(hover: none) and (pointer: coarse)";
+
+const DEVICE_NOTICE =
+    "ReLuminate Echo needs a keyboard and headphones. " +
+    "Please open this page on a laptop or desktop computer.";
+
 /** Keys the game owns. Swallowing their defaults stops arrows and space scrolling the page. */
 const HANDLED_KEYS = new Set([
     "ArrowLeft",
@@ -75,7 +85,24 @@ let pausedByVisibility = false;
  */
 let speechWanted = true;
 
+showDeviceNotice();
 waitForFirstKey();
+
+/**
+ * Tells a visitor with no keyboard why nothing is happening. Text only, and it blocks
+ * nothing: the first-key listener is still armed, so a tablet with a hardware keyboard
+ * works as soon as a key is pressed.
+ *
+ * Written straight to the live region rather than announced. Speech needs a user gesture
+ * to start, and the whole point is that this visitor cannot give one.
+ */
+function showDeviceNotice(): void {
+    if (!window.matchMedia?.(NO_KEYBOARD_QUERY).matches) return;
+    const notice = requireElement("device-notice");
+    notice.textContent = DEVICE_NOTICE;
+    notice.hidden = false;
+    status.textContent = DEVICE_NOTICE;
+}
 
 function waitForFirstKey(): void {
     window.addEventListener("keydown", onFirstKey, { once: true });
