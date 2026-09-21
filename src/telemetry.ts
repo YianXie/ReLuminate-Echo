@@ -22,7 +22,8 @@ export interface AcquisitionRecord {
      * (spec) Angular error at the moment the player started walking, degrees, absolute.
      * This is the headline perception number: it says how well the binaural cues alone
      * let someone point at a sound before they had any distance feedback to correct with.
-     * Null if the player collected the beacon without ever walking.
+     * Null if the player never started walking during this hunt, which includes walking
+     * into it with the key already held from the hunt before.
      */
     angularErrorAtWalkStart: number | null;
     /** Closest the player got to the beacon during the hunt, units. */
@@ -78,6 +79,14 @@ export class TelemetryRecorder {
     private hazardHits = 0;
     private acquisitions: AcquisitionRecord[] = [];
     private hunt: Hunt | null = null;
+    /**
+     * Whether the player was walking on the previous step. Lives on the recorder, not on
+     * the hunt, so that it survives a collection: a key held from one hunt into the next
+     * is still the same walk, not a new decision.
+     */
+    private wasWalking = false;
+    /** False until the round's first sample, which has no previous step to compare with. */
+    private sampled = false;
 
     beginRound(difficulty: DifficultyParameters): void {
         this.difficulty = difficulty;
@@ -87,6 +96,8 @@ export class TelemetryRecorder {
         this.hazardHits = 0;
         this.acquisitions = [];
         this.hunt = newHunt();
+        this.wasWalking = false;
+        this.sampled = false;
     }
 
     /** Called once per simulation step, after the world has moved. */
@@ -98,9 +109,19 @@ export class TelemetryRecorder {
         hunt.elapsed += dt;
 
         // (spec) The angle the player was off by when they committed to a direction. Captured
-        // on the first step they walk, because after that the distance cues start correcting
-        // them and the number stops being about localisation.
-        if (hunt.angularErrorAtWalkStart === null && sample.isWalking) {
+        // on a walk onset only, because after that the distance cues start correcting them
+        // and the number stops being about localisation.
+        //
+        // An onset is a step that walks where the previous one did not. A key held through
+        // a collection is therefore not one: the player never chose to walk at the new
+        // beacon, and its bearing at that moment is wherever it happened to spawn. Nor is a
+        // key already down on the round's first step, before there was anything to aim at.
+        // A hunt walked from end to end with no onset stays null, which is the truth: no
+        // committed direction was observed.
+        const onset = sample.isWalking && !this.wasWalking && this.sampled;
+        this.wasWalking = sample.isWalking;
+        this.sampled = true;
+        if (hunt.angularErrorAtWalkStart === null && onset) {
             hunt.angularErrorAtWalkStart = Math.abs(sample.bearingToTarget);
         }
 
