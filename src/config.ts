@@ -361,6 +361,9 @@ export const CUES = {
     },
 } as const;
 
+/** How much the game says during a round. See SPEECH.IN_ROUND_VERBOSITY. */
+export type InRoundVerbosity = "minimal" | "full";
+
 /**
  * Self-voicing. (spec) The player may have no vision and no screen reader configured, so
  * the game reads itself aloud rather than relying on assistive technology being present.
@@ -391,6 +394,19 @@ export const SPEECH = {
      * queued as separate lines; a development build warns when a line is over.
      */
     MAX_UTTERANCE_CHARS: 140,
+    /**
+     * How much is said while a timed round is running.
+     *
+     * Speech competes with the binaural audio the player is trying to localise, and the
+     * earcons already carry the news: three rising notes are a collection, a low thud is
+     * a hazard. 'minimal' says only what a sound cannot, in one word: the score after a
+     * collection, and "Hazard." 'full' is the v0.1 wording, friendlier to a brand-new
+     * player at the cost of a sentence over the beacon each time.
+     *
+     * The ten-second warning, round start and end, pause and the practice script are the
+     * same either way.
+     */
+    IN_ROUND_VERBOSITY: "minimal" as InRoundVerbosity,
 } as const;
 
 /** Player-facing settings. (spec) Exactly three, all keyboard-reachable and spoken. */

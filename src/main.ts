@@ -145,13 +145,12 @@ async function onFirstKey(): Promise<void> {
             round?.collect();
             telemetry.recordCollect();
             if (machine.is("practice")) advancePractice();
-            else
-                announce(`Beacon collected. Score ${round?.score ?? 0}.`, true);
+            else announce(collectedLine(round?.score ?? 0), true);
         },
         onHazardHit: () => {
             round?.penalise();
             telemetry.recordHazardHit();
-            announce("Hazard. Five seconds lost.", true);
+            announce(hazardLine(), true);
         },
     });
 
@@ -284,6 +283,19 @@ function endRound(): void {
         `Round over. You found ${round.score} ${plural}. Press Space to play again.`,
         true
     );
+}
+
+/** (spec) In 'minimal' the collect cue has already said "collected"; only the number is news. */
+function collectedLine(score: number): string {
+    return SPEECH.IN_ROUND_VERBOSITY === "minimal"
+        ? `${score}`
+        : `Beacon collected. Score ${score}.`;
+}
+
+function hazardLine(): string {
+    return SPEECH.IN_ROUND_VERBOSITY === "minimal"
+        ? "Hazard."
+        : "Hazard. Five seconds lost.";
 }
 
 /** One fixed simulation step. */
