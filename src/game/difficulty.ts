@@ -44,6 +44,23 @@ export function defaultParameters(): DifficultyParameters {
     };
 }
 
+/**
+ * The practice round: no hazards, no clock, nothing to lose. It comes from here so that
+ * this file stays the single source of round parameters.
+ *
+ * "No timer" is a round of infinite length, which needs no special case anywhere: a
+ * `Round` built from it never warns and never ends. JSON has no Infinity, so telemetry
+ * stores the practice round's `roundSeconds` as null.
+ */
+export function practiceParameters(): DifficultyParameters {
+    return {
+        ...defaultParameters(),
+        hazardCount: 0,
+        hazardPenalty: 0,
+        roundSeconds: Infinity,
+    };
+}
+
 export function createDifficulty(): DifficultyController {
     return {
         next: defaultParameters,

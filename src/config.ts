@@ -63,6 +63,29 @@ export const GAME = {
     PING_RADIUS: 20,
 } as const;
 
+/**
+ * The practice round: a guaranteed first success in the opening seconds, for a judge
+ * trying the game once as much as for a real first-time player. No hazards, no clock.
+ */
+export const PRACTICE = {
+    /**
+     * Where each practice beacon appears, relative to the way the player is facing at the
+     * moment it spawns: degrees, positive to the right, and units away. A spot outside the
+     * walls is pulled back inside them, so keep the script short enough to stay near the
+     * centre or a late beacon can land closer than its distance says.
+     *
+     * The first is dead right because the spoken instruction says "to your right", and a
+     * quarter turn is the easiest thing to hear: it is where left/right cues are strongest.
+     * Ten units is about three seconds of walking, long enough to hear the pulse speed up.
+     * The second is behind and to the left, which cannot be found without turning, and
+     * turning is the skill the game is built on.
+     */
+    BEACONS: [
+        { bearingDeg: 90, distance: 10 },
+        { bearingDeg: -135, distance: 10 },
+    ],
+} as const;
+
 /** Fixed simulation step. Decoupled from the display refresh rate so physics is deterministic. */
 export const LOOP = {
     /** Seconds per simulation step (60 Hz). */

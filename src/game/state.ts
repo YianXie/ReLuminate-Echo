@@ -6,14 +6,26 @@ import type { DifficultyParameters } from "./difficulty";
  * this machine is the single place a screen-free player's mental model is kept in sync
  * with the program's.
  */
-export type Phase = "idle" | "onboarding" | "playing" | "paused" | "roundOver";
+export type Phase =
+    | "idle"
+    | "onboarding"
+    | "practice"
+    | "playing"
+    | "paused"
+    | "roundOver";
 
+/**
+ * `roundOver` doubles as the ready state between rounds, which is why practice both starts
+ * from it and ends in it. Practice has no clock to stop, so it cannot be paused: Escape
+ * ends it instead.
+ */
 const ALLOWED: Record<Phase, readonly Phase[]> = {
     idle: ["onboarding", "playing"],
-    onboarding: ["playing", "idle"],
+    onboarding: ["playing", "practice", "idle"],
+    practice: ["roundOver"],
     playing: ["paused", "roundOver"],
     paused: ["playing", "roundOver"],
-    roundOver: ["playing", "idle"],
+    roundOver: ["playing", "practice", "idle"],
 };
 
 export type PhaseListener = (next: Phase, previous: Phase) => void;

@@ -23,16 +23,22 @@ Put on headphones. Stereo headphones — any pair. Speakers will not work, becau
 direction cues are binaural and depend on each ear hearing its own signal.
 
 Press any key. The game introduces itself out loud, plays a tone in your left ear and
-then your right so you can check your headphones are the right way round, reads you the
-controls, and waits for you to press Space.
+then your right so you can check your headphones are the right way round, and reads you
+the controls. Space skips all of that at any point.
+
+Space then starts a short practice: two beacons, no clock and no hazards, with the first
+one talked through. After it, Space starts a timed round of sixty seconds. T goes
+straight to a timed round instead.
 
 | Key | Action |
 |---|---|
 | <kbd>←</kbd> / <kbd>→</kbd> | Turn left and right |
 | <kbd>↑</kbd> | Walk forward |
-| <kbd>Space</kbd> | Sonar ping — everything nearby answers once. Also begins and restarts a round |
+| <kbd>Space</kbd> | Sonar ping — everything nearby answers once. Also starts practice from the introduction, and a timed round after that |
 | <kbd>Enter</kbd> | Collect the beacon when you are on it |
-| <kbd>Esc</kbd> | Pause and hear your score |
+| <kbd>Esc</kbd> | Pause and hear your score. In practice, end the practice |
+| <kbd>P</kbd> | Start a practice round, before or between rounds |
+| <kbd>T</kbd> | Start a timed round, before or between rounds |
 | <kbd>H</kbd> | Repeat the controls |
 
 | Setting | Key |

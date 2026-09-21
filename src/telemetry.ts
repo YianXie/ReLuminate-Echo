@@ -53,7 +53,10 @@ export interface RoundRecord {
     pings: number;
     /** (spec) Round duration, seconds of play. */
     durationSeconds: number;
-    /** (spec) The difficulty parameters in effect. Fixed in v0.1; recorded anyway. */
+    /**
+     * (spec) The difficulty parameters in effect. A practice round has no clock, and its
+     * infinite `roundSeconds` is stored as null because JSON has no Infinity.
+     */
     difficulty: DifficultyParameters;
     acquisitions: AcquisitionRecord[];
     /** Beacons that were still being hunted when the clock ran out. Not counted above. */

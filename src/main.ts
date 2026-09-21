@@ -9,7 +9,7 @@
  */
 
 import { masterVolume, resumeAudio, setMasterVolume } from "./audio/context";
-import { GAME, SETTINGS, SPEECH } from "./config";
+import { GAME, PRACTICE, SETTINGS, SPEECH } from "./config";
 import { Radar } from "./ui/radar";
 import { TelemetryRecorder, downloadSessions } from "./telemetry";
 import { playCalibrationTone } from "./audio/cues";
@@ -18,7 +18,7 @@ import { SourcePool } from "./audio/source";
 import { GameLoop } from "./game/loop";
 import { World } from "./game/world";
 import { Round, StateMachine } from "./game/state";
-import { createDifficulty } from "./game/difficulty";
+import { createDifficulty, practiceParameters } from "./game/difficulty";
 import type { InputState } from "./game/player";
 
 const status = requireElement("status");
@@ -36,6 +36,8 @@ const CONTROLS: readonly string[] = [
     "Space sends a sonar ping.",
     "Enter collects the beacon when you are on it.",
     "Escape pauses and reads your score.",
+    "P starts a practice round.",
+    "T starts a timed round.",
     "H repeats these controls.",
 ];
 
@@ -45,6 +47,19 @@ const SETTINGS_HELP: readonly string[] = [
     "C switches high contrast visuals.",
     "D downloads your session data.",
 ];
+
+/**
+ * The practice script. Always spoken in full, whatever SPEECH.IN_ROUND_VERBOSITY says:
+ * this is the one place the game is teaching rather than being played.
+ *
+ * The first line says "to your right", which is only true while the first entry of
+ * PRACTICE.BEACONS stays to the right.
+ */
+const PRACTICE_FIRST =
+    "The beacon is to your right. Turn right until you hear the click, then walk forward. " +
+    "Press Enter when you hear the double chime.";
+const PRACTICE_NEXT = "Now find the next one on your own.";
+const PRACTICE_DONE = "Practice complete. Press Space to start a timed round.";
 
 /**
  * A primary input that cannot hover and is coarse: a phone or a tablet, where there is no
@@ -77,6 +92,8 @@ let pool: SourcePool | null = null;
 let world: World | null = null;
 let round: Round | null = null;
 let loop: GameLoop | null = null;
+/** Which entry of PRACTICE.BEACONS is being hunted. Only meaningful in the practice phase. */
+let practiceBeacon = 0;
 /** True when the current pause was forced by the page being hidden, not by the player. */
 let pausedByVisibility = false;
 /**
@@ -127,7 +144,9 @@ async function onFirstKey(): Promise<void> {
         onTargetCollected: () => {
             round?.collect();
             telemetry.recordCollect();
-            announce(`Beacon collected. Score ${round?.score ?? 0}.`, true);
+            if (machine.is("practice")) advancePractice();
+            else
+                announce(`Beacon collected. Score ${round?.score ?? 0}.`, true);
         },
         onHazardHit: () => {
             round?.penalise();
@@ -157,8 +176,8 @@ async function onFirstKey(): Promise<void> {
 /**
  * (spec) Spoken onboarding, in the order SPEC.md §7 sets out.
  *
- * The phase itself is the skip flag: pressing Space starts the round, which leaves the
- * onboarding phase, and the loop below stops at its next check. That avoids a separate
+ * The phase itself is the skip flag: pressing Space, T or P starts a round, which leaves
+ * the onboarding phase, and the loop below stops at its next check. That avoids a separate
  * "skipped" boolean that could disagree with the state machine.
  */
 async function runOnboarding(): Promise<void> {
@@ -174,7 +193,7 @@ async function runOnboarding(): Promise<void> {
         "If those arrived the wrong way round, your headphones are reversed. Swap them over.",
         ...CONTROLS,
         ...SETTINGS_HELP,
-        "Press Space to begin.",
+        "Press Space for a short practice. Or press T to go straight to a timed round.",
     ];
 
     for (const item of steps) {
@@ -204,6 +223,52 @@ function startRound(): void {
     );
 }
 
+/**
+ * The practice round: two beacons at scripted bearings, no hazards, no clock, nothing to
+ * lose. Everything else is the real game, the sonar ping included, because that is what
+ * is being taught. It is recorded like any other round, marked as practice.
+ */
+function startPractice(): void {
+    if (!world) return;
+    const parameters = practiceParameters();
+    round = new Round(parameters);
+    telemetry.beginRound(parameters, "practice");
+    world.start(parameters);
+    practiceBeacon = 0;
+    placePracticeBeacon();
+    machine.enter("practice");
+    announce(PRACTICE_FIRST, true);
+}
+
+/**
+ * Moves the beacon to its scripted place. The world has already put it somewhere random,
+ * as it does for every new beacon; nothing has sounded from there yet, so overruling it
+ * is inaudible. Returns false once the script has run out.
+ */
+function placePracticeBeacon(): boolean {
+    const beacon = PRACTICE.BEACONS[practiceBeacon];
+    if (!beacon || !world) return false;
+    world.spawnTargetAt(beacon.bearingDeg, beacon.distance);
+    return true;
+}
+
+/** A practice beacon was collected: on to the next, or done. */
+function advancePractice(): void {
+    practiceBeacon += 1;
+    if (placePracticeBeacon()) announce(PRACTICE_NEXT, true);
+    else endPractice();
+}
+
+/** Reached by collecting the last practice beacon or by pressing Escape. Same state, same prompt. */
+function endPractice(): void {
+    if (!round || !world || !machine.enter("roundOver")) return;
+    world.stop();
+    // Practice never reaches the difficulty controller: it says nothing about how hard a
+    // timed round should be.
+    telemetry.endRound(round.score);
+    announce(PRACTICE_DONE, true);
+}
+
 function endRound(): void {
     if (!round || !world) return;
     machine.enter("roundOver");
@@ -223,7 +288,7 @@ function endRound(): void {
 
 /** One fixed simulation step. */
 function step(dt: number): void {
-    if (!machine.is("playing") || !world || !round) return;
+    if (!machine.is("playing", "practice") || !world || !round) return;
 
     world.update(dt, input);
     round.tick(dt);
@@ -233,6 +298,7 @@ function step(dt: number): void {
         isWalking: world.player.isWalking,
     });
 
+    // Neither can happen in practice: its round is infinitely long. See practiceParameters().
     if (round.takeWarning()) announce("Ten seconds remaining.", true);
     if (round.isOver) endRound();
 }
@@ -255,10 +321,18 @@ function onKeyDown(event: KeyboardEvent): void {
             onSpace();
             break;
         case "Enter":
-            if (machine.is("playing")) world?.collect();
+            if (machine.is("playing", "practice")) world?.collect();
             break;
         case "Escape":
-            togglePause();
+            onEscape();
+            break;
+        case "t":
+        case "T":
+            beginFromReady(startRound);
+            break;
+        case "p":
+        case "P":
+            beginFromReady(startPractice);
             break;
         case "h":
         case "H":
@@ -315,24 +389,50 @@ function repeatControls(): void {
     CONTROLS.forEach((line, index) => void announce(line, index === 0));
 }
 
-/** (spec) Space begins the game, pings during play, and starts the next round after one ends. */
+/**
+ * (spec) Space does the expected thing for the phase: practice first from onboarding, a
+ * timed round from the ready state between rounds, and a sonar ping during either.
+ */
 function onSpace(): void {
-    if (machine.is("onboarding", "roundOver")) {
-        speech.cancel();
-        startRound();
+    if (machine.is("onboarding")) {
+        beginFromReady(startPractice);
         return;
     }
-    if (!machine.is("playing") || !round || !world) return;
+    if (machine.is("roundOver")) {
+        beginFromReady(startRound);
+        return;
+    }
+    if (!machine.is("playing", "practice") || !round || !world) return;
     if (round.usePing()) {
         telemetry.recordPing();
         world.ping();
     }
 }
 
-/** (spec) Escape pauses and speaks the current score. */
-function togglePause(): void {
+/**
+ * Onboarding and the ready state between rounds are the two places a round can start
+ * from. T and P mean the same thing in both; mid-round they do nothing. Whatever was
+ * being said is cut off, because the player has just answered it.
+ */
+function beginFromReady(start: () => void): void {
+    if (!machine.is("onboarding", "roundOver")) return;
+    speech.cancel();
+    start();
+}
+
+/**
+ * (spec) Escape pauses and speaks the current score. Practice has no clock to stop, so
+ * there it ends the practice instead.
+ */
+function onEscape(): void {
     if (machine.is("playing")) pause();
     else if (machine.is("paused")) unpause();
+    else if (machine.is("practice")) {
+        // The player has asked to leave, so the rest of a nine-second instruction about a
+        // beacon that no longer exists is not worth waiting for.
+        speech.cancel();
+        endPractice();
+    }
 }
 
 function pause(): void {
@@ -368,10 +468,16 @@ function onVisibilityChange(): void {
         if (machine.is("playing")) {
             pausedByVisibility = true;
             pause();
+        } else if (machine.is("practice")) {
+            // No clock to stop, so no pause to enter. Just do not leave a wall hissing
+            // into a tab nobody is looking at.
+            world?.silence();
         }
     } else if (pausedByVisibility) {
         pausedByVisibility = false;
         unpause();
+    } else if (machine.is("practice")) {
+        world?.resume();
     }
 }
 
@@ -431,7 +537,7 @@ function exportTelemetry(): void {
  * changes nothing; hiding it would not alter the game in any way.
  */
 function renderRadar(): void {
-    if (!world || !machine.is("playing", "paused")) {
+    if (!world || !machine.is("playing", "paused", "practice")) {
         radar.render(null);
         return;
     }

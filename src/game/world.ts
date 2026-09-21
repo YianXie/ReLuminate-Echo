@@ -32,6 +32,7 @@ export interface WorldEvents {
 }
 
 const RAD_TO_DEG = 180 / Math.PI;
+const DEG_TO_RAD = Math.PI / 180;
 
 /**
  * The arena, the things in it, and the mapping from arena coordinates to audio-world
@@ -176,7 +177,20 @@ export class World {
 
     /** Moves the beacon somewhere new and re-points its source at it. */
     spawnTarget(): void {
-        const spot = this.randomSpawnPoint();
+        this.placeTarget(this.randomSpawnPoint());
+    }
+
+    /**
+     * Moves the beacon to a scripted spot instead: `bearingDeg` from the way the player is
+     * facing right now, positive to the right, and `distance` units away. A spot outside
+     * the walls is pulled back inside them, exactly as a random one would be.
+     */
+    spawnTargetAt(bearingDeg: number, distance: number): void {
+        const angle = this.player.heading + bearingDeg * DEG_TO_RAD;
+        this.placeTarget(this.pointFromPlayer(angle, distance));
+    }
+
+    private placeTarget(spot: { x: number; y: number }): void {
         this.target.x = spot.x;
         this.target.y = spot.y;
         this.targetInRange = false;
@@ -283,7 +297,7 @@ export class World {
      * enough from everything else that two objects are never voiced from one direction.
      */
     private randomSpawnPoint(): { x: number; y: number } {
-        const limit = GAME.ARENA_SIZE / 2 - GAME.WALL_MARGIN * 2;
+        const limit = spawnLimit();
         const minFromPlayer =
             this.parameters?.minSpawnDistance ?? GAME.MIN_SPAWN_DISTANCE;
         // The wall is excluded because it moves with the player; the target is included
@@ -311,12 +325,25 @@ export class World {
 
         // Rejection sampling can in principle fail; fall back to a point on the minimum-distance
         // circle, nudged inside the walls. Never leaves the player without a beacon to find.
-        const angle = Math.random() * Math.PI * 2;
+        return this.pointFromPlayer(Math.random() * Math.PI * 2, minFromPlayer);
+    }
+
+    /** The point `distance` units from the player along a compass angle, kept inside the walls. */
+    private pointFromPlayer(
+        angle: number,
+        distance: number
+    ): { x: number; y: number } {
+        const limit = spawnLimit();
         return {
-            x: clampTo(this.player.x + Math.sin(angle) * minFromPlayer, limit),
-            y: clampTo(this.player.y + Math.cos(angle) * minFromPlayer, limit),
+            x: clampTo(this.player.x + Math.sin(angle) * distance, limit),
+            y: clampTo(this.player.y + Math.cos(angle) * distance, limit),
         };
     }
+}
+
+/** Nothing is placed closer to a wall than this, measured from the centre, units. */
+function spawnLimit(): number {
+    return GAME.ARENA_SIZE / 2 - GAME.WALL_MARGIN * 2;
 }
 
 /** (spec) Target: pulsed sine, rate rising with proximity. */
