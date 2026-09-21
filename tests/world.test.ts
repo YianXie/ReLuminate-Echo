@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { GAME, PRACTICE } from "../src/config";
 import type { SourcePool } from "../src/audio/source";
-import { practiceParameters } from "../src/game/difficulty";
+import { levelParameters, practiceParameters } from "../src/game/difficulty";
 import { World } from "../src/game/world";
 
 /**
@@ -99,5 +99,74 @@ describe("the practice script", () => {
             world.player.y = world.target.y;
             world.player.heading = heading;
         }
+    });
+});
+
+/**
+ * A pool that can voice `size` things and no more. The sources are empty stand-ins: all
+ * the world does with one outside update() is hold it and hand it back.
+ */
+function poolOf(size: number): SourcePool {
+    let inUse = 0;
+    return {
+        acquire: () => (inUse < size ? { id: ++inUse } : null),
+        release: () => {},
+        releaseAll: () => {
+            inUse = 0;
+        },
+        update: () => {},
+    } as unknown as SourcePool;
+}
+
+describe("hazards the pool cannot voice", () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    it("places every hazard when there is a source for each", () => {
+        const error = vi.spyOn(console, "error").mockImplementation(() => {});
+        const world = new World(poolOf(8));
+        world.start({ ...levelParameters(0), hazardCount: 5 });
+
+        expect(world.hazards).toHaveLength(5);
+        expect(world.hazards.every((hazard) => hazard.source)).toBe(true);
+        expect(error).not.toHaveBeenCalled();
+    });
+
+    it("leaves out any hazard it has no source for, and says so loudly", () => {
+        const error = vi.spyOn(console, "error").mockImplementation(() => {});
+        // One source goes to the beacon, leaving three for five hazards.
+        const world = new World(poolOf(4));
+        world.start({ ...levelParameters(0), hazardCount: 5 });
+
+        expect(world.hazards).toHaveLength(3);
+        expect(world.hazards.every((hazard) => hazard.source)).toBe(true);
+        expect(error).toHaveBeenCalledTimes(1);
+        expect(String(error.mock.calls[0]?.[0])).toMatch(/2 hazard/);
+    });
+
+    it("applies the same rule when the world is voiced again after a pause", () => {
+        const error = vi.spyOn(console, "error").mockImplementation(() => {});
+        let size = 8;
+        let inUse = 0;
+        const shrinking = {
+            acquire: () => (inUse < size ? { id: ++inUse } : null),
+            release: () => {},
+            releaseAll: () => {
+                inUse = 0;
+            },
+            update: () => {},
+        } as unknown as SourcePool;
+
+        const world = new World(shrinking);
+        world.start({ ...levelParameters(0), hazardCount: 4 });
+        expect(world.hazards).toHaveLength(4);
+
+        world.silence();
+        size = 3;
+        world.resume();
+
+        // Beacon first, then two hazards. The two with no voice are gone, not silent.
+        expect(world.hazards).toHaveLength(2);
+        expect(world.hazards.every((hazard) => hazard.source)).toBe(true);
+        expect(error).toHaveBeenCalledTimes(1);
     });
 });

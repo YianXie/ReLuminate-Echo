@@ -74,15 +74,13 @@ export class World {
 
         this.spawnTarget();
         for (let i = 0; i < parameters.hazardCount; i++) {
+            const source = this.pool.acquire(hazardVoice());
+            if (!source) {
+                reportUnvoicedHazards(parameters.hazardCount - i);
+                break;
+            }
             const spot = this.randomSpawnPoint();
-            const hazard: Hazard = {
-                x: spot.x,
-                y: spot.y,
-                source: null,
-                armed: true,
-            };
-            hazard.source = this.pool.acquire(hazardVoice());
-            this.hazards.push(hazard);
+            this.hazards.push({ x: spot.x, y: spot.y, source, armed: true });
         }
     }
 
@@ -106,6 +104,14 @@ export class World {
         this.target.source = this.pool.acquire(targetVoice());
         for (const hazard of this.hazards)
             hazard.source = this.pool.acquire(hazardVoice());
+
+        // The same rule as in start(): a hazard that cannot be heard does not exist.
+        const voiced = this.hazards.filter((hazard) => hazard.source);
+        if (voiced.length < this.hazards.length) {
+            reportUnvoicedHazards(this.hazards.length - voiced.length);
+            this.hazards.length = 0;
+            this.hazards.push(...voiced);
+        }
     }
 
     stop(): void {
@@ -344,6 +350,19 @@ export class World {
 /** Nothing is placed closer to a wall than this, measured from the centre, units. */
 function spawnLimit(): number {
     return GAME.ARENA_SIZE / 2 - GAME.WALL_MARGIN * 2;
+}
+
+/**
+ * A hazard the pool has no source for is left out of the round altogether. Silent, it
+ * would still cost five seconds to walk into, with nothing to steer round: a missing
+ * hazard is a bug, but a silent one is a harm. `validateLevels()` should make this
+ * unreachable, which is why it is reported as an error and not shrugged off.
+ */
+function reportUnvoicedHazards(count: number): void {
+    console.error(
+        `No free audio source for ${count} hazard(s); leaving them out of the round. ` +
+            `DIFFICULTY.LEVELS asks for more than the source pool can voice.`
+    );
 }
 
 /** (spec) Target: pulsed sine, rate rising with proximity. */
