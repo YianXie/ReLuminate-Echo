@@ -118,7 +118,7 @@ waitForFirstKey();
  * to start, and the whole point is that this visitor cannot give one.
  */
 function showDeviceNotice(): void {
-    if (!window.matchMedia?.(NO_KEYBOARD_QUERY).matches) return;
+    if (!window.matchMedia?.(NO_KEYBOARD_QUERY)?.matches) return;
     const notice = requireElement("device-notice");
     notice.textContent = DEVICE_NOTICE;
     notice.hidden = false;
