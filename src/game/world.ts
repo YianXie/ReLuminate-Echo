@@ -3,11 +3,13 @@ import { setListenerPose } from "../audio/context";
 import type { BinauralSource, SourcePool, SourceVoice } from "../audio/source";
 import {
     playCentreTick,
+    playCentreTickNow,
     playCollect,
     playCollision,
     playInRange,
     playPing,
 } from "../audio/cues";
+import { CentreLock, centreTolerance } from "./aim";
 import type { DifficultyParameters } from "./difficulty";
 import { Player, bearing, wrapAngle, type InputState } from "./player";
 
@@ -30,6 +32,7 @@ export interface WorldEvents {
 }
 
 const RAD_TO_DEG = 180 / Math.PI;
+const DEG_TO_RAD = Math.PI / 180;
 
 /**
  * The arena, the things in it, and the mapping from arena coordinates to audio-world
@@ -50,6 +53,7 @@ export class World {
     private parameters: DifficultyParameters | null = null;
     private targetInRange = false;
     private silenced = false;
+    private readonly centreLock = new CentreLock();
 
     constructor(
         private readonly pool: SourcePool,
@@ -70,15 +74,13 @@ export class World {
 
         this.spawnTarget();
         for (let i = 0; i < parameters.hazardCount; i++) {
+            const source = this.pool.acquire(hazardVoice());
+            if (!source) {
+                reportUnvoicedHazards(parameters.hazardCount - i);
+                break;
+            }
             const spot = this.randomSpawnPoint();
-            const hazard: Hazard = {
-                x: spot.x,
-                y: spot.y,
-                source: null,
-                armed: true,
-            };
-            hazard.source = this.pool.acquire(hazardVoice());
-            this.hazards.push(hazard);
+            this.hazards.push({ x: spot.x, y: spot.y, source, armed: true });
         }
     }
 
@@ -96,9 +98,20 @@ export class World {
     resume(): void {
         if (!this.silenced) return;
         this.silenced = false;
+        // Coming back from a pause, the player wants to know at once whether they are
+        // still on line, not up to a second later.
+        this.centreLock.reset();
         this.target.source = this.pool.acquire(targetVoice());
         for (const hazard of this.hazards)
             hazard.source = this.pool.acquire(hazardVoice());
+
+        // The same rule as in start(): a hazard that cannot be heard does not exist.
+        const voiced = this.hazards.filter((hazard) => hazard.source);
+        if (voiced.length < this.hazards.length) {
+            reportUnvoicedHazards(this.hazards.length - voiced.length);
+            this.hazards.length = 0;
+            this.hazards.push(...voiced);
+        }
     }
 
     stop(): void {
@@ -140,7 +153,7 @@ export class World {
         this.syncListener();
         if (this.silenced) return;
 
-        this.updateTarget();
+        this.updateTarget(dt);
         this.updateHazards();
         this.updateWall();
         this.pool.update();
@@ -170,25 +183,46 @@ export class World {
 
     /** Moves the beacon somewhere new and re-points its source at it. */
     spawnTarget(): void {
-        const spot = this.randomSpawnPoint();
+        this.placeTarget(this.randomSpawnPoint());
+    }
+
+    /**
+     * Moves the beacon to a scripted spot instead: `bearingDeg` from the way the player is
+     * facing right now, positive to the right, and `distance` units away. A spot outside
+     * the walls is pulled back inside them, exactly as a random one would be.
+     */
+    spawnTargetAt(bearingDeg: number, distance: number): void {
+        const angle = this.player.heading + bearingDeg * DEG_TO_RAD;
+        this.placeTarget(this.pointFromPlayer(angle, distance));
+    }
+
+    private placeTarget(spot: { x: number; y: number }): void {
         this.target.x = spot.x;
         this.target.y = spot.y;
         this.targetInRange = false;
+        // A different beacon: being aimed at it, even by luck, is news.
+        this.centreLock.reset();
         if (!this.target.source)
             this.target.source = this.pool.acquire(targetVoice());
     }
 
-    private updateTarget(): void {
+    private updateTarget(dt: number): void {
         const source = this.target.source;
         if (source) source.setPosition(this.target.x, 0, -this.target.y);
 
-        // (spec) Centre-lock tick. Called every frame the player is on axis; the cue module
-        // owns the rate limit so the game does not have to track tick timing.
-        if (Math.abs(this.bearingToTarget) <= GAME.CENTRE_TOLERANCE)
-            playCentreTick();
-
         const radius = this.parameters?.collectRadius ?? GAME.COLLECT_RADIUS;
-        const inRange = this.distanceToTarget <= radius;
+        const distance = this.distanceToTarget;
+
+        // (spec) Centre-lock tick. Whether the player is aimed, and whether they have just
+        // become so, is game state and stays here; the cue module only makes the sound.
+        const aimed =
+            Math.abs(this.bearingToTarget) <=
+            centreTolerance(radius, distance);
+        const tick = this.centreLock.step(dt, aimed);
+        if (tick === "entry") playCentreTickNow();
+        else if (tick === "held") playCentreTick();
+
+        const inRange = distance <= radius;
         if (inRange && !this.targetInRange) playInRange();
         this.targetInRange = inRange;
     }
@@ -269,7 +303,7 @@ export class World {
      * enough from everything else that two objects are never voiced from one direction.
      */
     private randomSpawnPoint(): { x: number; y: number } {
-        const limit = GAME.ARENA_SIZE / 2 - GAME.WALL_MARGIN * 2;
+        const limit = spawnLimit();
         const minFromPlayer =
             this.parameters?.minSpawnDistance ?? GAME.MIN_SPAWN_DISTANCE;
         // The wall is excluded because it moves with the player; the target is included
@@ -297,12 +331,38 @@ export class World {
 
         // Rejection sampling can in principle fail; fall back to a point on the minimum-distance
         // circle, nudged inside the walls. Never leaves the player without a beacon to find.
-        const angle = Math.random() * Math.PI * 2;
+        return this.pointFromPlayer(Math.random() * Math.PI * 2, minFromPlayer);
+    }
+
+    /** The point `distance` units from the player along a compass angle, kept inside the walls. */
+    private pointFromPlayer(
+        angle: number,
+        distance: number
+    ): { x: number; y: number } {
+        const limit = spawnLimit();
         return {
-            x: clampTo(this.player.x + Math.sin(angle) * minFromPlayer, limit),
-            y: clampTo(this.player.y + Math.cos(angle) * minFromPlayer, limit),
+            x: clampTo(this.player.x + Math.sin(angle) * distance, limit),
+            y: clampTo(this.player.y + Math.cos(angle) * distance, limit),
         };
     }
+}
+
+/** Nothing is placed closer to a wall than this, measured from the centre, units. */
+function spawnLimit(): number {
+    return GAME.ARENA_SIZE / 2 - GAME.WALL_MARGIN * 2;
+}
+
+/**
+ * A hazard the pool has no source for is left out of the round altogether. Silent, it
+ * would still cost five seconds to walk into, with nothing to steer round: a missing
+ * hazard is a bug, but a silent one is a harm. `validateLevels()` should make this
+ * unreachable, which is why it is reported as an error and not shrugged off.
+ */
+function reportUnvoicedHazards(count: number): void {
+    console.error(
+        `No free audio source for ${count} hazard(s); leaving them out of the round. ` +
+            `DIFFICULTY.LEVELS asks for more than the source pool can voice.`
+    );
 }
 
 /** (spec) Target: pulsed sine, rate rising with proximity. */

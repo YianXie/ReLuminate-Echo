@@ -19,15 +19,19 @@ export const GAME = {
     PLAYER_SPEED: 3,
     /** (spec) Rotation speed, degrees/sec. Faster is quicker to aim, harder to hold a lock. */
     TURN_SPEED: 120,
-    /** (spec) Distance at which the target can be collected, units. */
+    /**
+     * (spec) Distance at which the target can be collected, units. Used by the practice
+     * round; a timed round takes its own from DIFFICULTY.LEVELS.
+     */
     COLLECT_RADIUS: 1.5,
-    /** (spec) Distance at which a hazard is struck, units. */
+    /** (spec) Distance at which a hazard is struck, units. Timed rounds: see DIFFICULTY.LEVELS. */
     HAZARD_RADIUS: 1.2,
-    /** (spec) Hazards per round. */
-    HAZARD_COUNT: 3,
-    /** (spec) Round length, seconds. */
+    /**
+     * (spec) Round length, seconds. The same at every difficulty level, so that scores stay
+     * comparable from round to round.
+     */
     ROUND_SECONDS: 60,
-    /** (spec) Seconds lost per hazard collision. */
+    /** (spec) Seconds lost per hazard collision. Also the same at every level. */
     HAZARD_PENALTY: 5,
     /** (spec) Minimum seconds between sonar pings. */
     PING_COOLDOWN: 1.5,
@@ -35,10 +39,19 @@ export const GAME = {
      * (spec) Half-width of the "you are aimed at the target" window, degrees.
      * Wider is easier to find but gives a vaguer heading; narrower is a precise
      * bearing that is fiddly to hold while walking.
+     *
+     * This is the floor, and it is what applies across most of the arena. Close in, the
+     * window widens to the angle the collect radius itself covers, because a fixed five
+     * degrees is narrower than the beacon once you are near it and the tick flickers while
+     * you walk straight at the thing. With a 1.5 unit radius the widening starts at about
+     * 17 units and reaches 27 degrees at 3 units.
      */
     CENTRE_TOLERANCE: 5,
 
-    /** Nothing spawns closer than this to the player, units. Keeps every hunt a real hunt. */
+    /**
+     * Nothing spawns closer than this to the player, units. Keeps every hunt a real hunt.
+     * Used by the practice round; a timed round takes its own from DIFFICULTY.LEVELS.
+     */
     MIN_SPAWN_DISTANCE: 6,
     /** Hazards are kept at least this far apart from each other and from the target, units. */
     MIN_ENTITY_SEPARATION: 4,
@@ -55,6 +68,86 @@ export const GAME = {
      * rather than a free map of everything. Raise it if playtesters feel lost.
      */
     PING_RADIUS: 20,
+} as const;
+
+/**
+ * The practice round: a guaranteed first success in the opening seconds, for a judge
+ * trying the game once as much as for a real first-time player. No hazards, no clock.
+ */
+export const PRACTICE = {
+    /**
+     * Where each practice beacon appears, relative to the way the player is facing at the
+     * moment it spawns: degrees, positive to the right, and units away. A spot outside the
+     * walls is pulled back inside them, so keep the script short enough to stay near the
+     * centre or a late beacon can land closer than its distance says.
+     *
+     * The first is dead right because the spoken instruction says "to your right", and a
+     * quarter turn is the easiest thing to hear: it is where left/right cues are strongest.
+     * Ten units is about three seconds of walking, long enough to hear the pulse speed up.
+     * The second is behind and to the left, which cannot be found without turning, and
+     * turning is the skill the game is built on.
+     */
+    BEACONS: [
+        { bearingDeg: 90, distance: 10 },
+        { bearingDeg: -135, distance: 10 },
+    ],
+} as const;
+
+/**
+ * Adaptive difficulty: a 1-up / 2-down staircase, the standard psychophysics procedure.
+ * Two beacons in a row found within the time budget step the difficulty up one level; one
+ * miss steps it down one. That settles where the player succeeds about 71% of the time,
+ * which is hard enough to stay interesting and easy enough not to feel hopeless.
+ *
+ * The staircase moves hunt by hunt, but a round is played at one level from start to
+ * finish: changing the hazard layout under a player who cannot see it would be jarring
+ * and unfair. Nothing is stored; every page load starts again from START_LEVEL.
+ */
+export const DIFFICULTY = {
+    /**
+     * Off pins every round to START_LEVEL, for controlled testing where rounds have to be
+     * comparable with each other.
+     */
+    ADAPTIVE: true as boolean,
+
+    /**
+     * Easiest first. Each step adds a hazard, shrinks the beacon, swells the hazards,
+     * pushes new beacons further away and tightens the time allowed to find one.
+     * The fourth row is the fixed difficulty v0.1 shipped with.
+     *
+     * `acquireBudgetSeconds` is what counts as a success at that level: a beacon collected
+     * within it. A hunt that runs past it is a failure, collected or not; one the clock
+     * cuts short inside it counts as neither. It does nothing to the round itself. Too
+     * generous and the staircase only ever climbs; too tight and an unlucky far spawn
+     * reads as a failure of skill.
+     *
+     * `hazardCount` may never exceed AUDIO.MAX_CONCURRENT_SOURCES - NON_HAZARD_SOURCES.
+     * The table is checked against that at startup and the game refuses to start if it is
+     * broken, because the alternative is a hazard with no voice.
+     */
+    LEVELS: [
+        { hazardCount: 0, collectRadius: 2.0, hazardRadius: 1.0, minSpawnDistance: 6, acquireBudgetSeconds: 20 },
+        { hazardCount: 1, collectRadius: 1.8, hazardRadius: 1.1, minSpawnDistance: 7, acquireBudgetSeconds: 18 },
+        { hazardCount: 2, collectRadius: 1.6, hazardRadius: 1.2, minSpawnDistance: 8, acquireBudgetSeconds: 16 },
+        { hazardCount: 3, collectRadius: 1.5, hazardRadius: 1.2, minSpawnDistance: 9, acquireBudgetSeconds: 14 },
+        { hazardCount: 4, collectRadius: 1.3, hazardRadius: 1.3, minSpawnDistance: 10, acquireBudgetSeconds: 12 },
+        { hazardCount: 5, collectRadius: 1.2, hazardRadius: 1.4, minSpawnDistance: 11, acquireBudgetSeconds: 10 },
+    ],
+    /**
+     * Index into LEVELS of the first round, counting from 0. The player hears levels
+     * counted from 1, so 2 here is announced as "Level 3". Below the middle on purpose: a
+     * first round that is too easy costs one round, one that is too hard can cost a player.
+     */
+    START_LEVEL: 2,
+    /** The "2" in 1-up / 2-down. Raising it makes the game settle somewhere easier. */
+    SUCCESSES_TO_STEP_UP: 2,
+    /**
+     * Most levels the difficulty may move between one round and the next, either way.
+     * A single very good or very bad minute should nudge the next round, not lurch it.
+     */
+    MAX_LEVEL_CHANGE_PER_ROUND: 2,
+    /** Pooled sources that are never available to hazards: one for the beacon, one for the wall. */
+    NON_HAZARD_SOURCES: 2,
 } as const;
 
 /** Fixed simulation step. Decoupled from the display refresh rate so physics is deterministic. */
@@ -188,6 +281,9 @@ export const AUDIO = {
     IDLE_OSC_FREQUENCY: 440,
 } as const;
 
+/** How the centre-lock tick behaves while the player holds their aim. See CUES.CENTRE_TICK. */
+export type CentreTickMode = "continuous" | "edge";
+
 /**
  * Sound definitions. (spec) SPEC.md §6 fixes the frequencies and shapes; the gains and
  * envelope times are the parts to tune by ear.
@@ -298,6 +394,25 @@ export const CUES = {
         gain: 0.3,
         /** Rate limit, seconds. Below ~0.15 it machine-guns and stops reading as a discrete signal. */
         MIN_INTERVAL: 0.22,
+        /**
+         * What the tick does while the player stays aimed.
+         *
+         * 'continuous' repeats every MIN_INTERVAL for as long as they are on axis. It is a
+         * constant reassurance, and it is also a fifth of a second of clicking laid over an
+         * 8 Hz beacon at exactly the moment the player is trying to hear the pulse rate.
+         *
+         * 'edge' ticks once on entering the window, then only every EDGE_REPEAT_INTERVAL
+         * while they stay in it. Leaving and coming back ticks at once, so sweeping across
+         * the beacon still marks the spot. Quieter, at the cost of less feedback that a
+         * long straight walk is still on line. Chosen by ear.
+         */
+        MODE: "edge" as CentreTickMode,
+        /**
+         * Seconds between reminder ticks in 'edge' mode. Shorter drifts back towards
+         * 'continuous'; much longer and a player who wanders off line while walking is not
+         * told until they have gone a few units wrong.
+         */
+        EDGE_REPEAT_INTERVAL: 1.0,
     },
 
     /** Left/right headphone calibration tone used during onboarding. */
@@ -309,6 +424,9 @@ export const CUES = {
         release: 0.05,
     },
 } as const;
+
+/** How much the game says during a round. See SPEECH.IN_ROUND_VERBOSITY. */
+export type InRoundVerbosity = "minimal" | "full";
 
 /**
  * Self-voicing. (spec) The player may have no vision and no screen reader configured, so
@@ -330,6 +448,29 @@ export const SPEECH = {
      */
     ESTIMATED_CHARS_PER_SECOND: 13,
     WATCHDOG_PADDING_SECONDS: 3,
+    /**
+     * Longest line the game should hand to the synthesiser in one go, characters.
+     *
+     * Desktop Chrome with Google's network voices can stop partway through an utterance
+     * of roughly fifteen seconds and never fire `end`. The watchdog keeps the queue moving
+     * but the player silently loses the rest of the sentence. 140 characters is about ten
+     * seconds at RATE, which leaves a margin. Anything longer is split into sentences and
+     * queued as separate lines; a development build warns when a line is over.
+     */
+    MAX_UTTERANCE_CHARS: 140,
+    /**
+     * How much is said while a timed round is running.
+     *
+     * Speech competes with the binaural audio the player is trying to localise, and the
+     * earcons already carry the news: three rising notes are a collection, a low thud is
+     * a hazard. 'minimal' says only what a sound cannot, in one word: the score after a
+     * collection, and "Hazard." 'full' is the v0.1 wording, friendlier to a brand-new
+     * player at the cost of a sentence over the beacon each time.
+     *
+     * The ten-second warning, round start and end, pause and the practice script are the
+     * same either way.
+     */
+    IN_ROUND_VERBOSITY: "minimal" as InRoundVerbosity,
 } as const;
 
 /** Player-facing settings. (spec) Exactly three, all keyboard-reachable and spoken. */
@@ -343,7 +484,14 @@ export const SETTINGS = {
  * calls, nothing leaves the machine.
  */
 export const TELEMETRY = {
-    STORAGE_KEY: "reluminate-echo.sessions",
+    /**
+     * Bumped with SCHEMA_VERSION. Rounds stored under the v0.1 key were recorded with a
+     * walk-start angle and an overshoot that were both wrong, so they are neither read,
+     * migrated nor deleted: they stay where they are, out of the corrected data.
+     */
+    STORAGE_KEY: "reluminate-echo.sessions.v2",
+    /** Stamped on every record, so an exported file says which rules it was measured under. */
+    SCHEMA_VERSION: 2,
     /** Oldest rounds are dropped past this, so a long demo session cannot fill localStorage. */
     MAX_ROUNDS_STORED: 200,
     /**

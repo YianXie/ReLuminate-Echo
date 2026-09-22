@@ -22,20 +22,28 @@ export interface AcquisitionRecord {
      * (spec) Angular error at the moment the player started walking, degrees, absolute.
      * This is the headline perception number: it says how well the binaural cues alone
      * let someone point at a sound before they had any distance feedback to correct with.
-     * Null if the player collected the beacon without ever walking.
+     * Null if the player never started walking during this hunt, which includes walking
+     * into it with the key already held from the hunt before.
      */
     angularErrorAtWalkStart: number | null;
     /** Closest the player got to the beacon during the hunt, units. */
     closestApproach: number;
     /**
      * (spec) How far past the beacon the player carried on before coming back, units.
-     * Measured as the furthest they got after their closest approach. Zero when they
-     * walked straight to it and stopped.
+     * Measured as the furthest they got after a closest approach, and the largest such
+     * figure if they passed it more than once. Zero when they walked straight to it and
+     * stopped.
      */
     overshootDistance: number;
 }
 
+/** A practice round is recorded like any other, and must never be mistaken for one. */
+export type RoundMode = "practice" | "timed";
+
 export interface RoundRecord {
+    /** TELEMETRY.SCHEMA_VERSION at the time of recording. */
+    schemaVersion: number;
+    mode: RoundMode;
     /** ISO timestamp of when the round started. */
     startedAt: string;
     score: number;
@@ -45,11 +53,19 @@ export interface RoundRecord {
     pings: number;
     /** (spec) Round duration, seconds of play. */
     durationSeconds: number;
-    /** (spec) The difficulty parameters in effect. Fixed in v0.1; recorded anyway. */
+    /**
+     * (spec) The difficulty parameters in effect. A practice round has no clock, and its
+     * infinite `roundSeconds` is stored as null because JSON has no Infinity.
+     */
     difficulty: DifficultyParameters;
     acquisitions: AcquisitionRecord[];
     /** Beacons that were still being hunted when the clock ran out. Not counted above. */
     abandonedAcquisitions: number;
+    /**
+     * How long each of those hunts had been running, seconds. A hunt cut short inside its
+     * time budget says nothing either way; one that had already overrun it was a miss.
+     */
+    abandonedSeconds: number[];
 }
 
 /** A frame's worth of the player's relationship to the current beacon. */
@@ -66,27 +82,41 @@ interface Hunt {
     closestApproach: number;
     /** Furthest from the beacon since the closest approach. */
     furthestSinceClosest: number;
+    /** Largest overshoot banked from earlier, shallower approaches in this hunt. */
+    maxOvershoot: number;
     /** Overshoot is only measured once the player has actually been near the beacon. */
     armed: boolean;
 }
 
 export class TelemetryRecorder {
     private difficulty: DifficultyParameters | null = null;
+    private mode: RoundMode = "timed";
     private startedAt = "";
     private elapsed = 0;
     private pings = 0;
     private hazardHits = 0;
     private acquisitions: AcquisitionRecord[] = [];
     private hunt: Hunt | null = null;
+    /**
+     * Whether the player was walking on the previous step. Lives on the recorder, not on
+     * the hunt, so that it survives a collection: a key held from one hunt into the next
+     * is still the same walk, not a new decision.
+     */
+    private wasWalking = false;
+    /** False until the round's first sample, which has no previous step to compare with. */
+    private sampled = false;
 
-    beginRound(difficulty: DifficultyParameters): void {
+    beginRound(difficulty: DifficultyParameters, mode: RoundMode): void {
         this.difficulty = difficulty;
+        this.mode = mode;
         this.startedAt = new Date().toISOString();
         this.elapsed = 0;
         this.pings = 0;
         this.hazardHits = 0;
         this.acquisitions = [];
         this.hunt = newHunt();
+        this.wasWalking = false;
+        this.sampled = false;
     }
 
     /** Called once per simulation step, after the world has moved. */
@@ -98,14 +128,31 @@ export class TelemetryRecorder {
         hunt.elapsed += dt;
 
         // (spec) The angle the player was off by when they committed to a direction. Captured
-        // on the first step they walk, because after that the distance cues start correcting
-        // them and the number stops being about localisation.
-        if (hunt.angularErrorAtWalkStart === null && sample.isWalking) {
+        // on a walk onset only, because after that the distance cues start correcting them
+        // and the number stops being about localisation.
+        //
+        // An onset is a step that walks where the previous one did not. A key held through
+        // a collection is therefore not one: the player never chose to walk at the new
+        // beacon, and its bearing at that moment is wherever it happened to spawn. Nor is a
+        // key already down on the round's first step, before there was anything to aim at.
+        // A hunt walked from end to end with no onset stays null, which is the truth: no
+        // committed direction was observed.
+        const onset = sample.isWalking && !this.wasWalking && this.sampled;
+        this.wasWalking = sample.isWalking;
+        this.sampled = true;
+        if (hunt.angularErrorAtWalkStart === null && onset) {
             hunt.angularErrorAtWalkStart = Math.abs(sample.bearingToTarget);
         }
 
         const distance = sample.distanceToTarget;
         if (distance < hunt.closestApproach) {
+            // Bank the overshoot measured so far before starting again from the new
+            // closest point. Without this, walking past the beacon and then coming back
+            // closer than before erased the very overshoot this exists to catch.
+            hunt.maxOvershoot = Math.max(
+                hunt.maxOvershoot,
+                hunt.furthestSinceClosest - hunt.closestApproach
+            );
             hunt.closestApproach = distance;
             hunt.furthestSinceClosest = distance;
             if (!this.difficulty) return;
@@ -144,7 +191,11 @@ export class TelemetryRecorder {
                 hunt.closestApproach === Infinity ? 0 : hunt.closestApproach
             ),
             overshootDistance: round3(
-                Math.max(0, hunt.furthestSinceClosest - hunt.closestApproach)
+                Math.max(
+                    0,
+                    hunt.maxOvershoot,
+                    hunt.furthestSinceClosest - hunt.closestApproach
+                )
             ),
         });
         this.hunt = newHunt();
@@ -152,7 +203,13 @@ export class TelemetryRecorder {
 
     /** Finalises the round, appends it to storage and returns it. */
     endRound(score: number): RoundRecord {
+        const abandoned =
+            this.hunt && this.hunt.elapsed > 0
+                ? [round3(this.hunt.elapsed)]
+                : [];
         const record: RoundRecord = {
+            schemaVersion: TELEMETRY.SCHEMA_VERSION,
+            mode: this.mode,
             startedAt: this.startedAt,
             score,
             hazardHits: this.hazardHits,
@@ -160,7 +217,8 @@ export class TelemetryRecorder {
             durationSeconds: round3(this.elapsed),
             difficulty: this.difficulty ?? ({} as DifficultyParameters),
             acquisitions: this.acquisitions,
-            abandonedAcquisitions: this.hunt && this.hunt.elapsed > 0 ? 1 : 0,
+            abandonedAcquisitions: abandoned.length,
+            abandonedSeconds: abandoned,
         };
         this.hunt = null;
         append(record);
@@ -235,6 +293,7 @@ function newHunt(): Hunt {
         angularErrorAtWalkStart: null,
         closestApproach: Infinity,
         furthestSinceClosest: 0,
+        maxOvershoot: 0,
         armed: false,
     };
 }

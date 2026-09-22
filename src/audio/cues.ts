@@ -98,9 +98,24 @@ export function playCollision(): void {
  * frame it is on target without thinking about it.
  */
 export function playCentreTick(): void {
-    const ctx = audioContext();
-    const now = ctx.currentTime;
+    const now = audioContext().currentTime;
     if (now - lastCentreTick < CUES.CENTRE_TICK.MIN_INTERVAL) return;
+    emitCentreTick(now);
+}
+
+/**
+ * The same tick with no rate limit, for a caller that has already decided this is the
+ * moment: the instant the listener's aim arrives on the source. That edge has to sound
+ * when it happens, and it cannot machine-gun, because arriving again means having left.
+ *
+ * It still counts towards the limit on `playCentreTick()`, so the two never double up.
+ */
+export function playCentreTickNow(): void {
+    emitCentreTick(audioContext().currentTime);
+}
+
+function emitCentreTick(now: number): void {
+    const ctx = audioContext();
     lastCentreTick = now;
 
     const { duration, filterHz, gain, q, attackRatio } = CUES.CENTRE_TICK;

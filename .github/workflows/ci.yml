@@ -21,3 +21,5 @@ jobs:
       - run: npm ci
       # Typechecks as well as bundles: `npm run build` is `tsc --noEmit && vite build`.
       - run: npm run build
+      # Vitest, plain Node. A failing test exits non-zero and fails the job.
+      - run: npm test
