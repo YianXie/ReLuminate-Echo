@@ -107,8 +107,18 @@ export function masterVolume(): number {
     return masterVolumeTarget;
 }
 
-/** Resolves once the context is running. Must be called from a user-gesture handler. */
+/**
+ * Resolves once the context is running. Must be called from a user-gesture handler.
+ *
+ * On iOS, Web Audio is silenced by the ring/silent switch unless the page says it is
+ * playing media, so a phone left on silent would hear the speech and none of the game.
+ * `navigator.audioSession` is how it says so. Only Safari has it, hence the feature test.
+ */
 export async function resumeAudio(): Promise<void> {
+    const session = (
+        navigator as Navigator & { audioSession?: { type: string } }
+    ).audioSession;
+    if (session) session.type = "playback";
     const c = audioContext();
     if (c.state !== "running") await c.resume();
 }

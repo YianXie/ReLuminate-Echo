@@ -238,3 +238,15 @@ describe("Announcer cancel", () => {
         expect(spokenTexts()).toEqual(["in flight"]);
     });
 });
+
+describe("Announcer.unlock", () => {
+    it("says one silent line straight away, and the queue does not wait for it", () => {
+        const announcer = new Announcer();
+        const log: string[] = [];
+        announcer.unlock();
+        track(announcer, "one", log);
+
+        expect(spokenTexts()).toEqual([" ", "one"]);
+        expect(log).toEqual(["start one"]);
+    });
+});

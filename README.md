@@ -48,6 +48,28 @@ straight to a timed round instead.
 | High contrast visuals | <kbd>C</kbd> |
 | Download your session data | <kbd>D</kbd> |
 
+### On a phone or tablet
+
+Open the same page and tap **Start** at the bottom of the screen. The controls stay fixed
+to the bottom edge, and the game describes them out loud by position, so you can find
+them without looking:
+
+| Row | Left to right |
+|---|---|
+| Top | **Practice**, **Timed round**, **Pause** (or **Resume**, or **End practice**), **Help** |
+| Middle | **Ping**, **Collect** |
+| Bottom | **Turn left**, **Walk**, **Turn right** |
+
+Hold a movement button to keep turning or walking, as with the arrow keys; a quick tap
+moves a little. With VoiceOver or TalkBack on, double-tap and hold. Speech, volume,
+contrast and the data download are buttons in the page's Settings section, and the
+phone's own volume buttons work too.
+
+The game keeps the screen awake while it is open, because a locked phone hides the page
+and pauses the round. To play with the display dark, use VoiceOver's Screen Curtain
+(three-finger triple-tap), which blanks the screen without locking it. On an iPhone the
+game plays through the silent switch.
+
 Turn speech off if you already run a screen reader — otherwise you will hear every
 announcement twice, once from us and once from your own software. The live region on the
 page carries the same words either way.
@@ -216,6 +238,7 @@ flag that drops pending lines, and a watchdog for browsers that forget to fire `
 ```
 src/
 ├── main.ts              bootstrap, input, round orchestration
+├── prompts.ts           every spoken line that names a control, keyboard and touch
 ├── config.ts            every tunable number in the project
 ├── telemetry.ts         per-round measurements, localStorage only
 ├── audio/
@@ -232,7 +255,8 @@ src/
 │   ├── loop.ts          fixed-step update loop
 │   └── difficulty.ts    round parameters: the adaptive staircase, and practice
 └── ui/
-    └── radar.ts         canvas view, for sighted viewers only
+    ├── radar.ts         canvas view, for sighted viewers only
+    └── touch.ts         on-screen controls for phones and tablets
 tests/                   Vitest, plain Node, no DOM
 ```
 
@@ -297,7 +321,10 @@ network call anywhere in the codebase.
   already carry the news.
 - A practice round with no clock and no hazards comes first, with the first beacon
   talked through.
-- Keyboard only. There is no mouse or pointer event handler anywhere in the project.
+- Keyboard first, with on-screen controls on touch screens. Every button does exactly
+  what a key does, and the spoken instructions switch to whichever the player last used.
+  The buttons are real `<button>`s, so VoiceOver and TalkBack can find and name them,
+  and the ones that do nothing in the current phase are marked dimmed.
 - The same announcements go to an ARIA live region for players using their own screen
   reader with our speech muted, paced so the region is not overwritten faster than a
   screen reader can read it.
@@ -327,6 +354,9 @@ What changed since v0.1:
 - **Adaptive difficulty**, described above. The v0.1 caution still stands: the staircase
   has been tested as arithmetic, not yet tuned against real players, and the level table
   is a first guess. `DIFFICULTY.ADAPTIVE` turns it off.
+- **Phones and tablets.** On-screen controls replace the "needs a keyboard" notice, with
+  a touch wording of every spoken instruction. Audio plays through the iPhone silent
+  switch, speech is unlocked from the first tap, and the screen is kept awake.
 - **Unit tests** (Vitest, plain Node) for the telemetry, the speech queue, the audio
   arithmetic, the state machine and the staircase. CI runs them after the build.
 
@@ -347,6 +377,19 @@ Firefox and Safari runs are still outstanding, as they were for v0.1.
 | No clicks or zipper noise when turning | not yet run | not yet run | not yet run |
 | Practice round completes | not yet run | not yet run | not yet run |
 | Telemetry download works (<kbd>D</kbd>) | not yet run | not yet run | not yet run |
+
+Phones have their own list. The touch controls have been driven in Chromium's iPhone
+emulation only, which shows the buttons work and says nothing about a real phone.
+
+| Check | iOS Safari | Android Chrome |
+|---|---|---|
+| Start tap starts audio and speech | not yet run | not yet run |
+| Audio plays with the silent switch on | not yet run | n/a |
+| Holding Turn and Walk moves continuously; a tap nudges | not yet run | not yet run |
+| Two thumbs at once (turn while walking) | not yet run | not yet run |
+| VoiceOver / TalkBack double-tap and hold works | not yet run | not yet run |
+| Screen stays awake through a round | not yet run | not yet run |
+| Locking and unlocking pauses, then resumes with sound | not yet run | not yet run |
 
 Firefox's HRTF implementation differs from Chrome's. If front/back discrimination is
 noticeably worse there, that is a finding to report, not a reason to retune the shared

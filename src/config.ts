@@ -473,10 +473,24 @@ export const SPEECH = {
     IN_ROUND_VERBOSITY: "minimal" as InRoundVerbosity,
 } as const;
 
-/** Player-facing settings. (spec) Exactly three, all keyboard-reachable and spoken. */
+/** Player-facing settings. (spec) Exactly three, all reachable by key or button and spoken. */
 export const SETTINGS = {
-    /** Master volume increment per key press. */
+    /** Master volume increment per key or button press. */
     VOLUME_STEP: 0.1,
+} as const;
+
+/** The on-screen controls for phones and tablets. See src/ui/touch.ts. */
+export const TOUCH = {
+    /**
+     * Shortest a turn or walk press lasts, seconds, however quickly the finger lifts.
+     *
+     * Without it a quick tap, and a screen reader's double tap, which presses and releases
+     * in the same instant, would move the player not at all. Longer makes a tap more
+     * useful on its own; shorter keeps it fine enough to aim with. At GAME.TURN_SPEED this
+     * is a 6 degree turn, just inside the 10 degree wide centre window, so tapping round
+     * towards the beacon cannot step clean over the click.
+     */
+    MIN_HOLD_SECONDS: 0.05,
 } as const;
 
 /**
