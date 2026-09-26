@@ -2,11 +2,11 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>ReLuminate Echo</title>
     <meta
       name="description"
-      content="An audio-first beacon hunt played with binaural sound, a keyboard and no screen."
+      content="An audio-first beacon hunt played with binaural sound on headphones, by keyboard or touch screen, without looking."
     />
     <style>
       :root {
@@ -92,20 +92,6 @@
         border-left-width: 6px;
       }
 
-      /*
-       * Shown only on a device with no keyboard. No display rule here on purpose: the
-       * `hidden` attribute has to keep winning until the script removes it.
-       */
-      #device-notice {
-        margin: 0 0 1.5rem;
-        padding: 0.9rem 1rem;
-        border: 2px solid var(--coral);
-        border-radius: 6px;
-        background: var(--panel);
-        font-size: 1.1rem;
-        font-weight: 600;
-      }
-
       /* The muted/green distinction disappears at maximum contrast, so lean on weight. */
       :root[data-contrast='high'] th,
       :root[data-contrast='high'] td {
@@ -143,6 +129,8 @@
 
       #radar {
         display: block;
+        max-width: 100%;
+        height: auto;
         border: 1px solid var(--line);
         border-radius: 6px;
         background: var(--bg);
@@ -185,17 +173,152 @@
       ol li {
         margin: 0.35rem 0;
       }
+
+      @media (max-width: 30rem) {
+        main {
+          padding: 1.25rem 1rem 3rem;
+        }
+
+        th {
+          white-space: normal;
+        }
+      }
+
+      /*
+       * Touch screens. main.ts sets data-input="touch" on anything with a coarse pointer,
+       * which reveals the on-screen controls and the page sections that describe them.
+       */
+      .touch-only {
+        display: none;
+      }
+
+      :root[data-input='touch'] .touch-only {
+        display: block;
+      }
+
+      :root[data-input='touch'] body {
+        /* Room for the fixed control pad, so the end of the page can scroll clear of it. */
+        padding-bottom: calc(16rem + env(safe-area-inset-bottom));
+      }
+
+      /*
+       * The pad is fixed to the bottom edge so every button is always in the same place
+       * under the player's thumbs: the spoken instructions describe it by position.
+       * No display rule on the section itself, so the `hidden` attribute keeps working.
+       */
+      .touch-controls {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        padding: 0.5rem 0.5rem calc(0.5rem + env(safe-area-inset-bottom));
+        background: var(--panel);
+        border-top: 2px solid var(--line);
+        /* Holding a button must never scroll, zoom or select text. */
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-touch-callout: none;
+      }
+
+      .touch-pad:not([hidden]) {
+        display: grid;
+        gap: 0.5rem;
+      }
+
+      .pad-row {
+        display: flex;
+        gap: 0.5rem;
+      }
+
+      .touch-controls button,
+      .setting-buttons button {
+        flex: 1;
+        min-height: 3.5rem;
+        padding: 0.25rem;
+        border: 2px solid var(--line);
+        border-radius: 10px;
+        background: var(--blue);
+        color: var(--ink);
+        font: inherit;
+        font-weight: 600;
+        line-height: 1.2;
+      }
+
+      .pad-move button {
+        min-height: 6rem;
+        font-size: 1.15rem;
+      }
+
+      .touch-controls .touch-start {
+        width: 100%;
+        min-height: 7rem;
+        background: var(--green);
+        color: var(--bg);
+        font-size: 1.5rem;
+      }
+
+      .touch-controls button:active {
+        background: var(--green);
+        color: var(--bg);
+      }
+
+      .touch-controls button[aria-disabled='true'] {
+        opacity: 0.45;
+      }
+
+      .touch-controls button:focus-visible,
+      .setting-buttons button:focus-visible {
+        outline: 3px solid var(--focus);
+        outline-offset: 2px;
+      }
+
+      :root[data-contrast='high'] .touch-controls button,
+      :root[data-contrast='high'] .setting-buttons button {
+        background: #000000;
+        border-color: var(--ink);
+      }
+
+      :root[data-contrast='high'] .touch-controls button:active,
+      :root[data-contrast='high'] .touch-controls .touch-start {
+        background: var(--ink);
+        color: #000000;
+      }
+
+      :root[data-input='touch'] .setting-buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-top: 0.75rem;
+      }
+
+      .setting-buttons button {
+        flex: 1 1 8rem;
+        min-height: 3rem;
+      }
+
+      /* A phone on its side: the same pad, shorter, so some of the page still shows. */
+      @media (max-height: 30rem) {
+        :root[data-input='touch'] body {
+          padding-bottom: calc(11rem + env(safe-area-inset-bottom));
+        }
+
+        .touch-controls button {
+          min-height: 2.75rem;
+        }
+
+        .pad-move button {
+          min-height: 4rem;
+        }
+
+        .touch-controls .touch-start {
+          min-height: 5rem;
+        }
+      }
     </style>
   </head>
   <body>
     <main>
-      <!--
-        Filled in and revealed by main.ts on a touch device with no keyboard, where the
-        "press any key" prompt below can never be answered. Informational only: it blocks
-        nothing, and a tablet with a hardware keyboard plays as normal.
-      -->
-      <p id="device-notice" hidden></p>
-
       <h1>ReLuminate Echo</h1>
       <p class="tagline">A beacon hunt you play with your ears. Headphones on, monitor off.</p>
 
@@ -227,8 +350,9 @@
         <ol>
           <li>Put on headphones. Any stereo pair. Speakers will not work.</li>
           <li>
-            Press any key. The game introduces itself and checks your headphones. Press
-            <kbd>Space</kbd> at any point to skip ahead.
+            Press any key, or tap <strong>Start</strong> on a touch screen. The game
+            introduces itself and checks your headphones. Press <kbd>Space</kbd> at any
+            point to skip ahead.
           </li>
           <li>
             Press <kbd>Space</kbd> for a short practice: two beacons, no clock and no
@@ -268,6 +392,33 @@
         </ul>
       </section>
 
+      <section class="touch-only" aria-labelledby="touch-heading">
+        <h2 id="touch-heading">On a phone or tablet</h2>
+        <ul>
+          <li>
+            The controls sit at the bottom of the screen, in three rows. Bottom row, left to
+            right: <strong>Turn left</strong>, <strong>Walk</strong>,
+            <strong>Turn right</strong>. Hold them down to keep going; a quick tap moves a
+            little.
+          </li>
+          <li>Middle row: <strong>Ping</strong> on the left, <strong>Collect</strong> on the right.</li>
+          <li>
+            Top row: <strong>Practice</strong>, <strong>Timed round</strong>,
+            <strong>Pause</strong> and <strong>Help</strong>.
+          </li>
+          <li>
+            With VoiceOver or TalkBack on, double-tap and hold a movement button to keep
+            turning or walking, and turn the game's own speech off below if you hear
+            everything twice.
+          </li>
+          <li>
+            The game keeps the screen awake while it is open, and locking the phone pauses
+            it. To play with the display dark, use VoiceOver's Screen Curtain
+            (three-finger triple-tap).
+          </li>
+        </ul>
+      </section>
+
       <section aria-labelledby="settings-heading">
         <h2 id="settings-heading">Settings</h2>
         <ul>
@@ -276,6 +427,13 @@
           <li><kbd>C</kbd> — high contrast visuals</li>
           <li><kbd>D</kbd> — download this session's data as JSON</li>
         </ul>
+        <div class="touch-only setting-buttons">
+          <button type="button" data-action="speech">Speech on/off</button>
+          <button type="button" data-action="volumeDown">Volume down</button>
+          <button type="button" data-action="volumeUp">Volume up</button>
+          <button type="button" data-action="contrast">High contrast</button>
+          <button type="button" data-action="download">Download data</button>
+        </div>
       </section>
 
 
@@ -361,6 +519,35 @@
         are all you need — speakers will not work.
       </p>
     </main>
+
+    <!--
+      The on-screen controls, revealed by main.ts on a touch screen. Until the game starts
+      this is one large Start button, the tap a phone needs before it will play sound.
+      The rows below are described aloud by position (src/prompts.ts), so moving a
+      button means changing those words too.
+    -->
+    <section id="touch-controls" class="touch-controls" aria-label="Game controls" hidden>
+      <button id="touch-start" class="touch-start" type="button" data-action="start">
+        Start
+      </button>
+      <div id="touch-pad" class="touch-pad" hidden>
+        <div class="pad-row">
+          <button type="button" data-action="practice">Practice</button>
+          <button type="button" data-action="timed">Timed round</button>
+          <button type="button" id="touch-pause" data-action="pause">Pause</button>
+          <button type="button" data-action="help">Help</button>
+        </div>
+        <div class="pad-row">
+          <button type="button" data-action="ping">Ping</button>
+          <button type="button" data-action="collect">Collect</button>
+        </div>
+        <div class="pad-row pad-move">
+          <button type="button" data-hold="turnLeft">Turn left</button>
+          <button type="button" data-hold="forward">Walk</button>
+          <button type="button" data-hold="turnRight">Turn right</button>
+        </div>
+      </div>
+    </section>
 
     <script type="module" src="/src/main.ts"></script>
   </body>

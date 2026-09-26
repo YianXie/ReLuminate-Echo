@@ -62,8 +62,9 @@ export class Radar {
         const ratio = window.devicePixelRatio || 1;
         this.canvas.width = RADAR.SIZE * ratio;
         this.canvas.height = RADAR.SIZE * ratio;
+        // Width only: the stylesheet caps it at the page width on a narrow phone, and
+        // the height follows from the square backing store.
         this.canvas.style.width = `${RADAR.SIZE}px`;
-        this.canvas.style.height = `${RADAR.SIZE}px`;
         this.context.setTransform(ratio, 0, 0, ratio, 0, 0);
     }
 

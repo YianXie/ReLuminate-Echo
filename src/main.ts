@@ -3,12 +3,17 @@
  * and world together.
  *
  * (spec) An AudioContext starts suspended and only a user gesture can resume it. The
- * "press any key to begin" prompt exists to satisfy that rule; it doubles as the moment
- * the player confirms their headphones are on, which is why onboarding starts there and
- * not on page load.
+ * "press any key to begin" prompt, and the Start button that stands in for it on a touch
+ * screen, exist to satisfy that rule. They double as the moment the player confirms their
+ * headphones are on, which is why onboarding starts there and not on page load.
  */
 
-import { masterVolume, resumeAudio, setMasterVolume } from "./audio/context";
+import {
+    isAudioRunning,
+    masterVolume,
+    resumeAudio,
+    setMasterVolume,
+} from "./audio/context";
 import { GAME, PRACTICE, SETTINGS, SPEECH } from "./config";
 import { Radar } from "./ui/radar";
 import { TelemetryRecorder, downloadSessions } from "./telemetry";
@@ -20,60 +25,29 @@ import { World } from "./game/world";
 import { Round, StateMachine } from "./game/state";
 import { createDifficulty, practiceParameters } from "./game/difficulty";
 import type { InputState } from "./game/player";
+import { PROMPTS, type InputMode, type Prompts } from "./prompts";
+import { TouchControls, type TouchAction } from "./ui/touch";
 
 const status = requireElement("status");
 
 /**
- * (spec) The full control list, in one place so every channel reads the same words.
- *
- * One sentence per line, each queued as its own announcement. Read as a single utterance
- * this ran to some 250 characters, and Chrome's network voices can give up partway
- * through anything that long without saying so. See SPEECH.MAX_UTTERANCE_CHARS.
+ * The part of the practice script that names no control. The rest is in `prompts.ts`.
+ * Always spoken in full, whatever SPEECH.IN_ROUND_VERBOSITY says: this is the one place
+ * the game is teaching rather than being played.
  */
-const MOVEMENT_CONTROLS: readonly string[] = [
-    "Left and right arrows turn.",
-    "Up arrow walks forward.",
-];
-
-const CONTROLS: readonly string[] = [
-    ...MOVEMENT_CONTROLS,
-    "Space sends a sonar ping.",
-    "Enter collects the beacon when you are on it.",
-    "Escape pauses and reads your score, or ends a practice round.",
-    "P starts a practice round.",
-    "T starts a timed round.",
-    "H repeats these controls.",
-];
-
-const SETTINGS_HELP: readonly string[] = [
-    "S turns speech on and off.",
-    "Minus and equals change the volume.",
-    "C switches high contrast visuals.",
-    "D downloads your session data.",
-];
-
-/**
- * The practice script. Always spoken in full, whatever SPEECH.IN_ROUND_VERBOSITY says:
- * this is the one place the game is teaching rather than being played.
- *
- * The first line says "to your right", which is only true while the first entry of
- * PRACTICE.BEACONS stays to the right.
- */
-const PRACTICE_FIRST =
-    "The beacon is to your right. Turn right until you hear the click, then walk forward. " +
-    "Press Enter when you hear the double chime.";
 const PRACTICE_NEXT = "Now find the next one on your own.";
-const PRACTICE_DONE = "Practice complete. Press Space to start a timed round.";
 
 /**
- * A primary input that cannot hover and is coarse: a phone or a tablet, where there is no
- * key to press and the page would otherwise sit there looking broken.
+ * A primary input that cannot hover and is coarse: a phone or a tablet, where the player
+ * most likely has no keyboard and is going to play with the on-screen controls.
  */
 const NO_KEYBOARD_QUERY = "(hover: none) and (pointer: coarse)";
 
-const DEVICE_NOTICE =
-    "ReLuminate Echo needs a keyboard and headphones. " +
-    "Please open this page on a laptop or desktop computer.";
+/** Any touch screen at all, a touch laptop included. Decides whether the buttons are shown. */
+const TOUCH_QUERY = "(any-pointer: coarse)";
+
+const TOUCH_START_PROMPT =
+    "Put on headphones, then tap Start at the bottom of the screen, or press any key.";
 
 /** Keys the game owns. Swallowing their defaults stops arrows and space scrolling the page. */
 const HANDLED_KEYS = new Set([
@@ -85,7 +59,18 @@ const HANDLED_KEYS = new Set([
     "Escape",
 ]);
 
+/** Movement keys held down. The on-screen buttons keep their own, in `touch.held`. */
 const input: InputState = { turnLeft: false, turnRight: false, forward: false };
+/** What `World` is handed each step: the keys and the buttons together. */
+const movement: InputState = { turnLeft: false, turnRight: false, forward: false };
+
+const touch = new TouchControls(document, {
+    onAction: onTouchAction,
+    onUse: () => {
+        inputMode = "touch";
+        wakeAudio();
+    },
+});
 
 const machine = new StateMachine();
 const difficulty = createDifficulty();
@@ -105,42 +90,86 @@ let pausedByVisibility = false;
  * turning speech off is deferred until the confirmation has finished being spoken.
  */
 let speechWanted = true;
-
-showDeviceNotice();
-waitForFirstKey();
-
 /**
- * Tells a visitor with no keyboard why nothing is happening. Text only, and it blocks
- * nothing: the first-key listener is still armed, so a tablet with a hardware keyboard
- * works as soon as a key is pressed.
- *
- * Written straight to the live region rather than announced. Speech needs a user gesture
- * to start, and the whole point is that this visitor cannot give one.
+ * Which way of playing the spoken instructions describe: whichever the player used last.
+ * A phone starts out on touch, and a tablet with a keyboard plugged in moves over to the
+ * keys the moment one is pressed.
  */
-function showDeviceNotice(): void {
-    if (!window.matchMedia?.(NO_KEYBOARD_QUERY)?.matches) return;
-    const notice = requireElement("device-notice");
-    notice.textContent = DEVICE_NOTICE;
-    notice.hidden = false;
-    status.textContent = DEVICE_NOTICE;
+let inputMode: InputMode = matches(NO_KEYBOARD_QUERY) ? "touch" : "keyboard";
+/** True between the first gesture being accepted and the page closing. */
+let started = false;
+/** Keeps a phone's screen from locking mid-round, which would pause the game. */
+let wakeLock: WakeLockSentinel | null = null;
+
+prepareTouch();
+waitForFirstGesture();
+
+/** The spoken wording for the input the player is using. */
+function prompts(): Prompts {
+    return PROMPTS[inputMode];
 }
 
-function waitForFirstKey(): void {
+/**
+ * Shows the on-screen controls on anything with a touch screen. Until the game starts
+ * they are a single Start button, which is the gesture a phone has to give before audio
+ * or speech may begin: it stands in for "press any key".
+ *
+ * The prompt is written straight to the live region rather than announced, because
+ * speech cannot start until that gesture has been given.
+ */
+function prepareTouch(): void {
+    if (!matches(TOUCH_QUERY)) return;
+    document.documentElement.dataset["input"] = "touch";
+    requireElement("touch-controls").hidden = false;
+    status.textContent = TOUCH_START_PROMPT;
+    machine.onChange(syncTouchPad);
+    syncTouchPad();
+}
+
+/**
+ * Arms the keyboard half of the first gesture. The Start button is always listening, and
+ * `onFirstGesture()` ignores whichever of the two comes second.
+ */
+function waitForFirstGesture(): void {
     window.addEventListener("keydown", onFirstKey, { once: true });
 }
 
-/** The gesture that unlocks audio. Everything downstream assumes a running context. */
-async function onFirstKey(): Promise<void> {
+function onFirstKey(): void {
+    inputMode = "keyboard";
+    void onFirstGesture();
+}
+
+/**
+ * The gesture that unlocks audio. Everything downstream assumes a running context.
+ *
+ * Anything that needs the gesture itself, rather than just having had one, happens before
+ * the first `await`: after it, iOS no longer counts this as the player's doing.
+ */
+async function onFirstGesture(): Promise<void> {
+    if (started) return;
+    started = true;
+    window.removeEventListener("keydown", onFirstKey);
+    speech.unlock();
+    void keepScreenAwake();
+
     try {
         await resumeAudio();
     } catch (error) {
         // Listen again rather than stranding the player: a refused resume is usually a
-        // transient autoplay decision, and the next keypress is another chance at a gesture.
+        // transient autoplay decision, and the next gesture is another chance.
+        started = false;
         announce(
-            `Audio could not start: ${(error as Error).message} Press any key to retry.`
+            `Audio could not start: ${(error as Error).message} ${prompts().retry}`
         );
-        waitForFirstKey();
+        waitForFirstGesture();
         return;
+    }
+
+    const startButton = document.getElementById("touch-start");
+    const pad = document.getElementById("touch-pad");
+    if (startButton && pad) {
+        startButton.hidden = true;
+        pad.hidden = false;
     }
 
     pool = new SourcePool();
@@ -186,17 +215,18 @@ async function onFirstKey(): Promise<void> {
 async function runOnboarding(): Promise<void> {
     machine.enter("onboarding");
 
+    const words = prompts();
     const steps: Array<string | (() => Promise<void>)> = [
-        "Welcome to ReLuminate Echo. A beacon hunt you play with your ears. Press Space at any time to skip.",
+        words.welcome,
         "Put on headphones now. The game is played entirely by ear, and it will not work on speakers.",
         "Now a quick headphone check. This tone is in your left ear.",
         () => playCalibrationTone("left"),
         "And this tone is in your right ear.",
         () => playCalibrationTone("right"),
         "If those arrived the wrong way round, your headphones are reversed. Swap them over.",
-        ...CONTROLS,
-        ...SETTINGS_HELP,
-        "Press Space for a short practice. Or press T to go straight to a timed round.",
+        ...words.controls,
+        ...words.settings,
+        words.onboardingEnd,
     ];
 
     for (const item of steps) {
@@ -241,12 +271,12 @@ function startPractice(): void {
     practiceBeacon = 0;
     placePracticeBeacon();
     machine.enter("practice");
-    announce(PRACTICE_FIRST, true);
+    announce(prompts().practiceFirst, true);
     // The welcome line invites the player to skip straight here, and one who does has
-    // been told to turn and walk but never which keys do that. Queued behind the
+    // been told to turn and walk but never which controls do that. Queued behind the
     // instruction rather than ahead of it, so a player who already knows and gets on with
     // it never hears them: collecting the first beacon flushes whatever is still waiting.
-    for (const line of MOVEMENT_CONTROLS) void announce(line);
+    for (const line of prompts().movement) void announce(line);
 }
 
 /**
@@ -275,7 +305,7 @@ function endPractice(): void {
     // Practice never reaches the difficulty controller: it says nothing about how hard a
     // timed round should be.
     telemetry.endRound(round.score);
-    announce(PRACTICE_DONE, true);
+    announce(prompts().practiceDone, true);
 }
 
 function endRound(): void {
@@ -294,7 +324,7 @@ function endRound(): void {
     });
     const plural = round.score === 1 ? "beacon" : "beacons";
     announce(
-        `Round over. You found ${round.score} ${plural}. Press Space to play again.`,
+        `Round over. You found ${round.score} ${plural}. ${prompts().playAgain}`,
         true
     );
 }
@@ -316,7 +346,10 @@ function hazardLine(): string {
 function step(dt: number): void {
     if (!machine.is("playing", "practice") || !world || !round) return;
 
-    world.update(dt, input);
+    movement.turnLeft = input.turnLeft || touch.held.turnLeft;
+    movement.turnRight = input.turnRight || touch.held.turnRight;
+    movement.forward = input.forward || touch.held.forward;
+    world.update(dt, movement);
     round.tick(dt);
     telemetry.sample(dt, {
         distanceToTarget: world.distanceToTarget,
@@ -332,6 +365,8 @@ function step(dt: number): void {
 function onKeyDown(event: KeyboardEvent): void {
     if (HANDLED_KEYS.has(event.key)) event.preventDefault();
     if (event.repeat) return;
+    inputMode = "keyboard";
+    wakeAudio();
     // A chord on a letter belongs to the browser, not the game: Cmd+P is "print", not
     // "start a practice round under the print dialog". Movement, Space, Enter and Escape
     // stay live with a modifier down, so a screen-reader user still holding Control from
@@ -413,12 +448,92 @@ function onKeyUp(event: KeyboardEvent): void {
 }
 
 /**
+ * The on-screen buttons. Each does what its key does, through the same function, so the
+ * two ways of playing cannot drift apart. Movement is not here: it is held, not pressed,
+ * and `step()` reads it from `touch.held`.
+ */
+function onTouchAction(action: TouchAction): void {
+    if (action === "start") {
+        void onFirstGesture();
+        return;
+    }
+    if (!started) return;
+    switch (action) {
+        case "practice":
+            beginFromReady(startPractice);
+            break;
+        case "timed":
+            beginFromReady(startRound);
+            break;
+        case "pause":
+            onEscape();
+            break;
+        case "help":
+            repeatControls();
+            break;
+        case "ping":
+            ping();
+            break;
+        case "collect":
+            if (machine.is("playing", "practice")) world?.collect();
+            break;
+        case "speech":
+            toggleSpeech();
+            break;
+        case "volumeDown":
+            changeVolume(-SETTINGS.VOLUME_STEP);
+            break;
+        case "volumeUp":
+            changeVolume(SETTINGS.VOLUME_STEP);
+            break;
+        case "contrast":
+            toggleContrast();
+            break;
+        case "download":
+            exportTelemetry();
+            break;
+    }
+}
+
+/**
+ * Marks the buttons that do nothing in the current phase, so a screen reader says
+ * "dimmed" instead of leaving the player to wonder why a tap did nothing. They stay
+ * pressable, because a button that vanishes from under a finger is worse. The pause
+ * button is named for what it will do.
+ */
+function syncTouchPad(): void {
+    const ready = machine.is("onboarding", "roundOver");
+    const hunting = machine.is("playing", "practice");
+    const live: Record<string, boolean> = {
+        practice: ready,
+        timed: ready,
+        pause: machine.is("playing", "paused", "practice"),
+        ping: hunting,
+        collect: hunting,
+        turnLeft: hunting,
+        turnRight: hunting,
+        forward: hunting,
+    };
+    const pad = requireElement("touch-pad");
+    for (const button of pad.querySelectorAll<HTMLElement>("button")) {
+        const name = button.dataset["action"] ?? button.dataset["hold"] ?? "";
+        const enabled = live[name] ?? true;
+        button.setAttribute("aria-disabled", String(!enabled));
+    }
+    requireElement("touch-pause").textContent = machine.is("paused")
+        ? "Resume"
+        : machine.is("practice")
+          ? "End practice"
+          : "Pause";
+}
+
+/**
  * (spec) H reads the controls again. The first sentence flushes whatever was waiting and
  * the rest queue up behind it in one go, so nothing else can land in the middle of the
  * list. A later priority line drops the remainder, which is right: it is more urgent.
  */
 function repeatControls(): void {
-    CONTROLS.forEach((line, index) => void announce(line, index === 0));
+    prompts().controls.forEach((line, index) => void announce(line, index === 0));
 }
 
 /**
@@ -434,6 +549,10 @@ function onSpace(): void {
         beginFromReady(startRound);
         return;
     }
+    ping();
+}
+
+function ping(): void {
     if (!machine.is("playing", "practice") || !round || !world) return;
     if (round.usePing()) {
         telemetry.recordPing();
@@ -473,7 +592,7 @@ function pause(): void {
     world.silence();
     const seconds = Math.ceil(round.timeRemaining);
     announce(
-        `Paused. Score ${round.score}. ${seconds} seconds left. Escape to resume.`,
+        `Paused. Score ${round.score}. ${seconds} seconds left. ${prompts().resume}`,
         true
     );
 }
@@ -505,11 +624,47 @@ function onVisibilityChange(): void {
             // into a tab nobody is looking at.
             world?.silence();
         }
-    } else if (pausedByVisibility) {
+        return;
+    }
+
+    // A locked phone releases the wake lock and may suspend the audio context, and
+    // neither comes back by itself. Most browsers let a page that has played before
+    // resume without a fresh gesture; where one does not, the next press does it.
+    void keepScreenAwake();
+    wakeAudio();
+    if (pausedByVisibility) {
         pausedByVisibility = false;
         unpause();
     } else if (machine.is("practice")) {
         world?.resume();
+    }
+}
+
+/**
+ * Restarts an audio context the system has suspended since the game began, as iOS does
+ * after the phone is locked or a call comes in. Called from every press, because a press
+ * is the gesture a browser may insist on before it lets audio start again.
+ */
+function wakeAudio(): void {
+    if (started && !isAudioRunning()) resumeAudio().catch(() => {});
+}
+
+/**
+ * Asks the browser not to lock the screen while the page is visible. On a phone, a
+ * locked screen hides the page, which pauses the round, so a player listening rather
+ * than looking would be cut off every thirty seconds. Refusal is not an error: the
+ * browser may not offer it, or battery saver may be on.
+ */
+async function keepScreenAwake(): Promise<void> {
+    if (wakeLock || !("wakeLock" in navigator) || document.hidden) return;
+    try {
+        const lock = await navigator.wakeLock.request("screen");
+        wakeLock = lock;
+        lock.addEventListener("release", () => {
+            if (wakeLock === lock) wakeLock = null;
+        });
+    } catch {
+        // Not offered or not allowed. The game still plays; the phone may lock.
     }
 }
 
@@ -591,6 +746,7 @@ function releaseAllKeys(): void {
     input.turnLeft = false;
     input.turnRight = false;
     input.forward = false;
+    touch.releaseAll();
 }
 
 /**
@@ -622,6 +778,10 @@ function announce(message: string, priority = false): Promise<boolean> {
             status.textContent = message;
         },
     });
+}
+
+function matches(query: string): boolean {
+    return window.matchMedia?.(query)?.matches ?? false;
 }
 
 function requireElement(id: string): HTMLElement {

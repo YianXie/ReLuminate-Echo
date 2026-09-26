@@ -95,6 +95,19 @@ export class Announcer {
         this.pump();
     }
 
+    /**
+     * Call from inside a user gesture, before anything else is said. iOS Safari keeps
+     * speech locked until `speak()` has been called directly from a tap or keypress, and
+     * the first real announcement comes later, after the audio context has been resumed,
+     * by which point the gesture no longer counts. A silent line spoken here unlocks it.
+     */
+    unlock(): void {
+        if (!this.isSupported) return;
+        const utterance = new SpeechSynthesisUtterance(" ");
+        utterance.volume = 0;
+        window.speechSynthesis.speak(utterance);
+    }
+
     /** Drops everything, pending and in flight. */
     cancel(): void {
         for (const item of this.queue.splice(0)) item.resolve(false);
